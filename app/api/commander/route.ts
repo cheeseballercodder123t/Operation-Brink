@@ -3,10 +3,25 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
+interface UnitSummary {
+  id: string;
+  name: string;
+  factionId: string;
+  type: string;
+  x: number;
+  y: number;
+  strength: number;
+  morale: number;
+  fuel: number;
+  inCombat: boolean;
+  isEncircled?: boolean;
+}
+
 interface BattlefieldSummary {
   simTick: number;
   simTime: string;
   defcon: number;
+  units?: UnitSummary[];
   factions: {
     id: string;
     name: string;
@@ -35,49 +50,63 @@ export async function POST(req: NextRequest) {
   const battlefield = body.battlefield;
   const prompt = `
 You are the 1960s Cold War Autonomous Geopolitical & Military Strategic Orchestrator for "PROJECT BRINK".
+You have direct tactical and operational command over military units on a 1280x800 vector theater of operations.
+
 Current simulation state:
 - Time: ${battlefield?.simTime || "0600 HRS, OCT 1963"} (Tick ${battlefield?.simTick || 0})
 - DEFCON Level: ${battlefield?.defcon || 3}
 - Unified San Pietro State: ${battlefield?.unifiedState ? "YES (Awakened Superpower)" : "NO (Civil War active)"}
 - Factions Status: ${JSON.stringify(battlefield?.factions || [])}
+- Active Units on Map (Sample): ${JSON.stringify((battlefield?.units || []).slice(0, 16))}
 - Active Air Sorties: ${JSON.stringify(battlefield?.activeAirSorties || [])}
 - Recent Combat Incidents: ${JSON.stringify(battlefield?.recentIncidents || [])}
 
-Generate strategic operational orders for the 4 factions:
-1. San Pietro Loyalists (Nationalist Junta)
-2. San Pietro Liberation Front (People's Front)
-3. Atlantic Coalition (Western Superpower)
-4. Volskan Union (Eastern Hegemon)
+Generate real tactical unit orders, air sorties, doctrine title, and radio transmissions for all 4 factions:
+1. San Pietro Loyalists (Nationalist Junta) - Defending Santa Maria and Delta bridge
+2. San Pietro Liberation Front (Rebels) - Guerrilla forces ambushing refineries & passes
+3. Atlantic Coalition (Western Superpower) - Carrier strike & Patton armor holding Port Bella
+4. Volskan Union (Eastern Hegemon) - Heavy artillery & T-55 armor advancing west
 
 Respond strictly in valid JSON without markdown wrapping or code blocks with the following schema:
 {
   "provider": "PROVIDER_NAME",
   "doctrineTitle": "OPERATION NAME (e.g. OPERATION STEEL THUNDER)",
   "geopoliticalAssessment": "Brief 1-2 sentence 1960s situation appraisal",
+  "unitOrders": [
+    {
+      "unitId": "exact unit ID from battlefield or faction-role like loy-arm-1",
+      "factionId": "loyalists" | "rebels" | "coalition" | "volskan",
+      "action": "ATTACK" | "FLANK" | "DEFEND" | "RETREAT" | "MOVE" | "BOMBARD",
+      "targetX": 640,
+      "targetY": 420,
+      "targetEnemyId": "optional enemy unit ID",
+      "orderText": "Order dispatch (e.g. Flank enemy armor east of bridge)"
+    }
+  ],
   "transmissions": [
     {
       "factionId": "loyalists",
       "callsign": "SAN PIETRO HIGH COMMAND",
       "message": "Radio intercept text in authentic 1960s military cable tone",
-      "priority": "HIGH" | "ROUTINE" | "FLASH"
+      "priority": "HIGH"
     },
     {
       "factionId": "rebels",
       "callsign": "LIBERATION COMANDANCIA",
       "message": "Radio intercept text",
-      "priority": "HIGH" | "ROUTINE" | "FLASH"
+      "priority": "HIGH"
     },
     {
       "factionId": "coalition",
       "callsign": "ATLANTIC CARRIER STRIKE SEVENTH",
       "message": "Radio intercept text",
-      "priority": "HIGH" | "ROUTINE" | "FLASH"
+      "priority": "ROUTINE"
     },
     {
       "factionId": "volskan",
       "callsign": "VOLSKAN ADVISORY STAVKA",
       "message": "Radio intercept text",
-      "priority": "HIGH" | "ROUTINE" | "FLASH"
+      "priority": "FLASH"
     }
   ],
   "airDirectives": [
@@ -110,7 +139,7 @@ Respond strictly in valid JSON without markdown wrapping or code blocks with the
       });
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: "gemini-3.1-flash-lite",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -126,7 +155,7 @@ Respond strictly in valid JSON without markdown wrapping or code blocks with the
           cleanText = cleanText.replace(/^```\s*/, "").replace(/\s*```$/, "");
         }
         const parsed = JSON.parse(cleanText);
-        parsed.provider = "GEMINI-3.8-FLASH";
+        parsed.provider = "GEMINI-3.5-FLASH-LITE";
         return NextResponse.json(parsed);
       }
     } catch (err) {
@@ -264,6 +293,43 @@ function generateAlgorithmicDirectives(battlefield?: BattlefieldSummary) {
       { factionId: "volskan", role: "INTERCEPTION", targetSector: "NORTH_RIVER" },
       { factionId: "rebels", role: "RECON", targetSector: "SANTA_MARIA" },
     ],
+    unitOrders: (battlefield?.units || []).map((u, idx) => {
+      let action: 'ATTACK' | 'FLANK' | 'DEFEND' | 'RETREAT' | 'MOVE' | 'BOMBARD' = 'MOVE';
+      let targetX = u.x;
+      let targetY = u.y;
+      let orderText = 'HOLD POSITION';
+
+      if (u.strength < 35) {
+        action = 'RETREAT';
+        targetX = u.factionId === 'loyalists' ? 240 : u.factionId === 'rebels' ? 1040 : u.factionId === 'coalition' ? 180 : 1120;
+        targetY = u.factionId === 'loyalists' ? 220 : u.factionId === 'rebels' ? 620 : u.factionId === 'coalition' ? 680 : 200;
+        orderText = 'FALL BACK TO SECURE DEPOT FOR REARM & MEDICAL TRIAGE';
+      } else if (u.type === 'artillery') {
+        action = 'BOMBARD';
+        targetX = 640 + (Math.sin(tick + idx) * 120);
+        targetY = 420 + (Math.cos(tick + idx) * 80);
+        orderText = 'ZERO SIGHTS ON RIVER BANK AND FIRE FOR EFFECT';
+      } else if (u.type === 'armor') {
+        action = tick % 2 === 0 ? 'FLANK' : 'ATTACK';
+        targetX = u.factionId === 'loyalists' || u.factionId === 'coalition' ? 720 : 540;
+        targetY = 420 + (idx % 2 === 0 ? 100 : -100);
+        orderText = action === 'FLANK' ? 'EXECUTE ARMORED PINCHER MANEUVER ON FLANK' : 'FRONTAL SPEARHEAD ADVANCE';
+      } else {
+        action = u.inCombat ? 'ATTACK' : 'DEFEND';
+        targetX = 640 + (Math.sin(idx) * 90);
+        targetY = 400 + (Math.cos(idx) * 90);
+        orderText = u.inCombat ? 'ENGAGE HOSTILES IN CLOSE RANGE COMBAT' : 'DIG IN DEFENSIVE PERIMETER';
+      }
+
+      return {
+        unitId: u.id,
+        factionId: u.factionId,
+        action,
+        targetX: Math.round(targetX),
+        targetY: Math.round(targetY),
+        orderText
+      };
+    }),
     groundDirectives: [
       { factionId: "loyalists", stance: "DEFENSIVE_HOLD", objective: "SANTA_MARIA" },
       { factionId: "rebels", stance: "FLANK_AMBUSH", objective: "OIL_REFINERIES" },

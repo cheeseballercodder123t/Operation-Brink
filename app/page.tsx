@@ -76,6 +76,25 @@ import {
   ProductionQueueItem
 } from '@/lib/economy';
 
+import {
+  WarRoomState,
+  FlashpointBattle,
+  SimHistorySnapshot,
+  createInitialWarRoom,
+  stepWeatherAndFlares,
+  stepFlashpoints,
+  stepHomefrontMorale
+} from '@/lib/warRoom';
+import { NewspaperModal } from '@/components/NewspaperModal';
+import { StrategicMapRoom } from '@/components/StrategicMapRoom';
+import { TimeScrubber } from '@/components/TimeScrubber';
+import { AnnunciatorButton } from '@/components/AnnunciatorButton';
+import { NixieTube } from '@/components/NixieTube';
+import { VUMeter } from '@/components/VUMeter';
+import { RotarySpeedDial } from '@/components/RotarySpeedDial';
+import { JewelIndicator } from '@/components/JewelIndicator';
+import { TacticalPeriscopeScope } from '@/components/TacticalPeriscopeScope';
+
 /* =========================================================================
    TYPES & DATA MODELS
    ========================================================================= */
@@ -84,6 +103,16 @@ export type FactionId = 'loyalists' | 'rebels' | 'coalition' | 'volskan' | 'unif
 export type UnitType = 'armor' | 'infantry' | 'mechanized' | 'artillery' | 'sam';
 export type AirRole = 'AIR_SUPERIORITY' | 'CAS' | 'INTERCEPTION' | 'INTERDICTION' | 'RECON';
 export type Stance = 'OFFENSIVE_THRUST' | 'DEFENSIVE_HOLD' | 'FLANK_AMBUSH' | 'WITHDRAW_REFUEL';
+
+export interface TacticalUnitOrder {
+  action: 'ATTACK' | 'FLANK' | 'DEFEND' | 'RETREAT' | 'MOVE' | 'BOMBARD';
+  targetX: number;
+  targetY: number;
+  targetUnitId?: string;
+  orderText: string;
+  issuedTick?: number;
+  aiControlled?: boolean;
+}
 
 export interface Unit {
   id: string;
@@ -111,6 +140,9 @@ export interface Unit {
   range: number;
   reloadTimer: number;
   lastFlanked?: boolean;
+  isEncircled?: boolean;
+  encirclementTimer?: number;
+  currentOrder?: TacticalUnitOrder;
 }
 
 export interface Airbase {
@@ -334,6 +366,36 @@ class VintageSoundSystem {
       gain.connect(this.ctx.destination);
       osc.start();
       osc.stop(this.ctx.currentTime + 0.2);
+    } catch {
+      // Ignore
+    }
+  }
+
+  public playRadioStatic() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+
+    try {
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.15);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * 0.08;
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 1200;
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+      noise.start();
     } catch {
       // Ignore
     }
@@ -866,6 +928,9 @@ const MONTE_ORO_POLY: [number, number][] = [
 ];
 
 export default function ProjectBrinkApp() {
+  // Top-level View Mode: Strategic Map Room (Macro Geopolitical) vs Tactical Radar View (Continuous 2D Vector)
+  const [viewMode, setViewMode] = useState<'strategic' | 'tactical'>('strategic');
+
   // Simulator state
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [simSpeed, setSimSpeed] = useState<number>(1);
@@ -873,7 +938,7 @@ export default function ProjectBrinkApp() {
   const [simHour, setSimHour] = useState<number>(6);
   const [simMinute, setSimMinute] = useState<number>(30);
   const [defcon, setDefcon] = useState<number>(3);
-  const [activeProvider, setActiveProvider] = useState<string>('GEMINI-3.8-FLASH [ACTIVE]');
+  const [activeProvider, setActiveProvider] = useState<string>('GEMINI-3.5-FLASH-LITE [ACTIVE]');
   const [isAiQuerying, setIsAiQuerying] = useState<boolean>(false);
   const [crtTheme, setCrtTheme] = useState<'amber' | 'green'>('green');
   const [scanlines, setScanlines] = useState<boolean>(true);
@@ -885,7 +950,8 @@ export default function ProjectBrinkApp() {
     samEnvelopes: true,
     contourLines: true,
     terrainZones: true,
-    fogOfWar: true
+    fogOfWar: true,
+    tacticalOrders: true
   });
 
   // Fog of War & Reconnaissance States
@@ -896,6 +962,15 @@ export default function ProjectBrinkApp() {
   const [diplomaticLedger, setDiplomaticLedger] = useState<DiplomaticLedger>(createInitialDiplomacy);
   const [economyState, setEconomyState] = useState<EconomyState>(createInitialEconomy);
   const [activeTab, setActiveTab] = useState<'telemetry' | 'diplomacy' | 'economy' | 'terrain'>('telemetry');
+
+  // War Room & Macro Geopolitics
+  const [warRoom, setWarRoom] = useState<WarRoomState>(createInitialWarRoom);
+  const [newspaperOpen, setNewspaperOpen] = useState<boolean>(false);
+  const [selectedBattleForNews, setSelectedBattleForNews] = useState<FlashpointBattle | null>(null);
+
+  // Time-Scrubbing Timeline Snapshots
+  const [snapshots, setSnapshots] = useState<SimHistorySnapshot[]>([]);
+  const [scrubIndex, setScrubIndex] = useState<number>(-1);
 
   // Entities
   const [units, setUnits] = useState<Unit[]>(createInitialUnits);
@@ -955,11 +1030,35 @@ export default function ProjectBrinkApp() {
     'Cold War standoff remains critical along the central river barrier. Clashes reported near Delta Bridge.'
   );
 
-  // Canvas Refs
+  // Canvas Refs & Offscreen Fog of War Canvas Ref
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fowCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameId = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
   const queryTimerRef = useRef<number>(0);
+  const lastSyncTimeRef = useRef<number>(0);
+
+  // Mutable Simulation World Reference (Decoupled from React state for buttery 60 FPS physics & rendering)
+  const simWorldRef = useRef({
+    units: createInitialUnits(),
+    airSorties: [] as AirSortie[],
+    samMissiles: [] as SamMissile[],
+    artilleryShells: [] as ArtilleryShell[],
+    visualEffects: [] as VisualEffect[],
+    reconSweepZones: [] as ReconSweepZone[],
+    bridges: INITIAL_BRIDGES,
+    controlNodes: INITIAL_CONTROL_NODES,
+    airbases: INITIAL_AIRBASES,
+    factions: FACTION_DEFINITIONS,
+    diplomaticLedger: createInitialDiplomacy(),
+    economyState: createInitialEconomy(),
+    warRoom: createInitialWarRoom(),
+    simTick: 0,
+    simHour: 6,
+    simMinute: 30,
+    defcon: 3,
+    snapshots: [] as SimHistorySnapshot[]
+  });
 
   // Audio mute sync
   useEffect(() => {
@@ -1164,6 +1263,19 @@ export default function ProjectBrinkApp() {
         simTick,
         simTime: `${String(simHour).padStart(2, '0')}:${String(simMinute).padStart(2, '0')} HRS, OCT 1963`,
         defcon,
+        units: units.map(u => ({
+          id: u.id,
+          name: u.name,
+          factionId: u.factionId,
+          type: u.type,
+          x: Math.round(u.x),
+          y: Math.round(u.y),
+          strength: Math.round(u.strength),
+          morale: Math.round(u.morale),
+          fuel: Math.round(u.fuel),
+          inCombat: u.inCombat,
+          isEncircled: u.isEncircled
+        })),
         factions: Object.values(factions).map(f => ({
           id: f.id,
           name: f.name,
@@ -1218,16 +1330,119 @@ export default function ProjectBrinkApp() {
           audioSys.playTeletype();
         }
 
-        // Apply ground stances
+        // 1. Apply Direct AI Tactical Unit Orders if present
+        const OBJECTIVE_COORDINATES: Record<string, { x: number; y: number }> = {
+          DELTA_BRIDGE: { x: 640, y: 420 },
+          OIL_REFINERIES: { x: 1080, y: 520 },
+          SANTA_MARIA: { x: 380, y: 260 },
+          MONTE_ORO: { x: 980, y: 680 },
+          PORT_BELLA: { x: 240, y: 680 },
+          NORTH_RIVER: { x: 640, y: 180 },
+          SIERRA_RANGE: { x: 880, y: 740 }
+        };
+
         if (Array.isArray(data.groundDirectives)) {
           setFactions(prev => {
             const next = { ...prev };
-            data.groundDirectives.forEach((gd: { factionId: FactionId; stance: Stance }) => {
+            data.groundDirectives.forEach((gd: { factionId: FactionId; stance: Stance; objective?: string }) => {
               if (next[gd.factionId]) {
                 next[gd.factionId].stance = gd.stance;
               }
             });
             return next;
+          });
+        }
+
+        // Update units with both granular unitOrders and fallback groundDirectives
+        const rawUnitOrders = Array.isArray(data.unitOrders) ? data.unitOrders : [];
+
+        setUnits(prev => {
+          return prev.map(u => {
+            // Check if AI provided a specific order for this unit
+            const specificOrder = rawUnitOrders.find((o: { unitId?: string; factionId?: string; action?: string; targetX?: number; targetY?: number; targetEnemyId?: string; orderText?: string }) => 
+              o.unitId === u.id || (o.factionId === u.factionId && o.unitId?.includes(u.type))
+            );
+
+            if (specificOrder) {
+              const targetX = Number.isFinite(specificOrder.targetX) ? specificOrder.targetX : u.targetX;
+              const targetY = Number.isFinite(specificOrder.targetY) ? specificOrder.targetY : u.targetY;
+              return {
+                ...u,
+                targetX,
+                targetY,
+                isRetreating: specificOrder.action === 'RETREAT',
+                currentOrder: {
+                  action: specificOrder.action || 'MOVE',
+                  targetX,
+                  targetY,
+                  targetUnitId: specificOrder.targetEnemyId,
+                  orderText: specificOrder.orderText || 'EXECUTING AI ORDER',
+                  issuedTick: simTick,
+                  aiControlled: true
+                }
+              };
+            }
+
+            // Fallback to ground stance directive
+            const directive = Array.isArray(data.groundDirectives) ? data.groundDirectives.find((gd: { factionId: FactionId; stance: Stance; objective?: string }) => gd.factionId === u.factionId) : null;
+            if (!directive) return u;
+
+            const objKey = directive.objective || (u.factionId === 'loyalists' || u.factionId === 'coalition' ? 'DELTA_BRIDGE' : 'OIL_REFINERIES');
+            const coord = OBJECTIVE_COORDINATES[objKey] || OBJECTIVE_COORDINATES['DELTA_BRIDGE'];
+
+            const offsetX = (Math.random() * 80 - 40);
+            const offsetY = (Math.random() * 80 - 40);
+            let newTargetX = coord.x + offsetX;
+            let newTargetY = coord.y + offsetY;
+
+            if (directive.stance === 'FLANK_AMBUSH') {
+              newTargetX += u.factionId === 'loyalists' ? -120 : 120;
+              newTargetY += 60;
+            } else if (directive.stance === 'WITHDRAW_REFUEL') {
+              newTargetX = u.factionId === 'loyalists' ? 240 : u.factionId === 'rebels' ? 1040 : 640;
+              newTargetY = u.factionId === 'loyalists' ? 200 : u.factionId === 'rebels' ? 700 : 400;
+            }
+
+            return {
+              ...u,
+              targetX: newTargetX,
+              targetY: newTargetY,
+              isRetreating: directive.stance === 'WITHDRAW_REFUEL',
+              currentOrder: {
+                action: directive.stance === 'FLANK_AMBUSH' ? 'FLANK' : directive.stance === 'WITHDRAW_REFUEL' ? 'RETREAT' : 'MOVE',
+                targetX: newTargetX,
+                targetY: newTargetY,
+                orderText: `DOCTRINE: ${directive.stance.replace(/_/g, ' ')}`,
+                issuedTick: simTick,
+                aiControlled: true
+              }
+            };
+          });
+        });
+
+        // Also sync to simWorldRef.current
+        if (simWorldRef.current) {
+          simWorldRef.current.units = simWorldRef.current.units.map(u => {
+            const specificOrder = rawUnitOrders.find((o: { unitId?: string; factionId?: string; action?: string; targetX?: number; targetY?: number }) => 
+              o.unitId === u.id || (o.factionId === u.factionId && o.unitId?.includes(u.type))
+            );
+            if (specificOrder && Number.isFinite(specificOrder.targetX) && Number.isFinite(specificOrder.targetY)) {
+              return {
+                ...u,
+                targetX: specificOrder.targetX,
+                targetY: specificOrder.targetY,
+                isRetreating: specificOrder.action === 'RETREAT'
+              };
+            }
+            const directive = Array.isArray(data.groundDirectives) ? data.groundDirectives.find((gd: { factionId: FactionId; stance: Stance; objective?: string }) => gd.factionId === u.factionId) : null;
+            if (!directive) return u;
+            const objKey = directive.objective || (u.factionId === 'loyalists' || u.factionId === 'coalition' ? 'DELTA_BRIDGE' : 'OIL_REFINERIES');
+            const coord = OBJECTIVE_COORDINATES[objKey] || OBJECTIVE_COORDINATES['DELTA_BRIDGE'];
+            return {
+              ...u,
+              targetX: coord.x + (Math.random() * 60 - 30),
+              targetY: coord.y + (Math.random() * 60 - 30)
+            };
           });
         }
 
@@ -1391,9 +1606,92 @@ export default function ProjectBrinkApp() {
                   u.kills += 1;
                 }
               }
-            } else if (!u.inCombat && u.fuel > 0 && u.strength > 0) {
-              // Movement toward target vector
-              const distToTarget = distance(u.x, u.y, u.targetX, u.targetY);
+            }
+
+            // Autonomous Tactical Micro-AI (Between LLM directives)
+            if (u.currentOrder?.aiControlled !== false && u.strength > 0) {
+              // 1. Tactical Retreat if critically damaged or out of fuel
+              if ((u.strength < 32 || u.fuel < 15) && !u.isRetreating) {
+                u.isRetreating = true;
+                const friendlyNodes = controlNodes.filter(n => n.owner === u.factionId || (u.factionId === 'unified' && n.owner === 'unified'));
+                let bestNode = friendlyNodes[0];
+                let bestDist = Infinity;
+                for (const fn of friendlyNodes) {
+                  const d = distance(u.x, u.y, fn.x, fn.y);
+                  if (d < bestDist) {
+                    bestDist = d;
+                    bestNode = fn;
+                  }
+                }
+                if (bestNode) {
+                  u.targetX = bestNode.x + (Math.random() * 40 - 20);
+                  u.targetY = bestNode.y + (Math.random() * 40 - 20);
+                  u.currentOrder = {
+                    action: 'RETREAT',
+                    targetX: u.targetX,
+                    targetY: u.targetY,
+                    orderText: `FALLING BACK TO ${bestNode.name.toUpperCase()} (STRENGTH: ${Math.round(u.strength)}%)`,
+                    issuedTick: simTick,
+                    aiControlled: true
+                  };
+                }
+              }
+              // 2. Armor & Mechanized Flanking Attack Logic
+              else if ((u.type === 'armor' || u.type === 'mechanized') && closestEnemy && minDist < 220 && !u.isRetreating) {
+                // Determine flanking angle (perpendicular to enemy orientation)
+                const flankAngleRad = ((closestEnemy.heading + 90) * Math.PI) / 180;
+                const flankX = closestEnemy.x + Math.cos(flankAngleRad) * (u.range * 0.75);
+                const flankY = closestEnemy.y + Math.sin(flankAngleRad) * (u.range * 0.75);
+                
+                // Only update if waypoint is reachable and meaningful
+                if (distance(u.x, u.y, flankX, flankY) > 20) {
+                  u.targetX = flankX;
+                  u.targetY = flankY;
+                  if (!u.currentOrder || u.currentOrder.action !== 'FLANK') {
+                    u.currentOrder = {
+                      action: 'FLANK',
+                      targetX: flankX,
+                      targetY: flankY,
+                      targetUnitId: closestEnemy.id,
+                      orderText: `OUTFLANKING ${closestEnemy.name.toUpperCase()}`,
+                      issuedTick: simTick,
+                      aiControlled: true
+                    };
+                  }
+                }
+              }
+              // 3. Infantry / Mechanized Strategic Objective Capture
+              else if (u.type === 'infantry' && !u.inCombat && !u.isRetreating) {
+                const contestedNodes = controlNodes.filter(n => n.owner !== u.factionId);
+                let closestNode = null;
+                let closestNodeDist = Infinity;
+                for (const cn of contestedNodes) {
+                  const d = distance(u.x, u.y, cn.x, cn.y);
+                  if (d < closestNodeDist) {
+                    closestNodeDist = d;
+                    closestNode = cn;
+                  }
+                }
+                if (closestNode && closestNodeDist < 280) {
+                  u.targetX = closestNode.x;
+                  u.targetY = closestNode.y;
+                  if (!u.currentOrder || u.currentOrder.action !== 'DEFEND') {
+                    u.currentOrder = {
+                      action: 'DEFEND',
+                      targetX: closestNode.x,
+                      targetY: closestNode.y,
+                      orderText: `ASSAULT & SECURE ${closestNode.name.toUpperCase()}`,
+                      issuedTick: simTick,
+                      aiControlled: true
+                    };
+                  }
+                }
+              }
+            }
+
+            // Movement toward target vector
+            const distToTarget = distance(u.x, u.y, u.targetX, u.targetY);
+            if (!u.inCombat && u.fuel > 0 && u.strength > 0) {
               if (distToTarget > 12) {
                 const moveAngle = (Math.atan2(u.targetY - u.y, u.targetX - u.x) * 180) / Math.PI;
                 u.heading = moveAngle;
@@ -1409,6 +1707,50 @@ export default function ProjectBrinkApp() {
                 // Faster entrenchment in urban or forest cover
                 const entrenchRate = terrainInfo.type === 'URBAN' || terrainInfo.type === 'FOREST' ? 4.5 : 3.0;
                 u.entrenchment = Math.min(100, u.entrenchment + dt * entrenchRate);
+              }
+
+              // Boids soft repulsion to prevent unnatural unit stacking within 25px
+              for (const other of prevUnits) {
+                if (other.id !== u.id && other.strength > 0) {
+                  const d = distance(u.x, u.y, other.x, other.y);
+                  if (d < 25 && d > 0) {
+                    const push = ((25 - d) / 25) * 0.8;
+                    u.x -= ((other.x - u.x) / d) * push;
+                    u.y -= ((other.y - u.y) / d) * push;
+                  }
+                }
+              }
+            }
+
+            // Encirclement & Supply line isolation check (Kessel)
+            const friendlyNodes = controlNodes.filter(n => n.owner === u.factionId || (u.factionId === 'unified' && n.owner === 'unified'));
+            let nearestBaseDist = 9999;
+            for (const node of friendlyNodes) {
+              const d = distance(u.x, u.y, node.x, node.y);
+              if (d < nearestBaseDist) nearestBaseDist = d;
+            }
+
+            if (nearestBaseDist > 340) {
+              u.isEncircled = true;
+              u.encirclementTimer = (u.encirclementTimer || 0) + dt;
+              // Isolated units suffer fuel starvation and morale collapse
+              u.fuel = Math.max(0, u.fuel - dt * 2.2);
+              u.morale = Math.max(0, u.morale - dt * 1.5);
+              if (u.fuel <= 0 && u.morale <= 10) {
+                u.strength = Math.max(0, u.strength - dt * 10);
+              }
+            } else {
+              u.isEncircled = false;
+              u.encirclementTimer = 0;
+            }
+
+            // Commander Archetype Doctrine influence
+            const cmd = simWorldRef.current.warRoom.commanders[u.factionId];
+            if (cmd) {
+              if (cmd.archetype === 'DOGMATIC_FANATIC') {
+                u.isRetreating = false; // Refuses retreat orders
+              } else if (u.strength < cmd.doctrine.retreatThreshold * 100 && !u.isRetreating) {
+                u.isRetreating = true;
               }
             }
 
@@ -1775,6 +2117,61 @@ export default function ProjectBrinkApp() {
             setTransmissions(prev => [...newTransmissions, ...prev].slice(0, 35));
             audioSys.playTeletype();
           }
+
+          // Step War Room Geopolitics, Weather, Flares, Flashpoints, and Logistics
+          const isNight = simHour < 6 || simHour >= 20;
+          const combatUnits = units.filter(u => u.inCombat);
+          const activeCombatCoords = combatUnits.map(u => ({ x: u.x, y: u.y }));
+
+          stepWeatherAndFlares(simWorldRef.current.warRoom, dt, isNight, activeCombatCoords);
+
+          stepFlashpoints(
+            simWorldRef.current.warRoom,
+            units,
+            dt,
+            (concludedBattle) => {
+              setSelectedBattleForNews(concludedBattle);
+              audioSys.playRadioStatic();
+            }
+          );
+
+          // Calculate casualties for homefront anti-war unrest
+          const coalitionLosses = units.filter(u => u.factionId === 'coalition' && u.inCombat && u.strength < 50).length;
+          const volskanLosses = units.filter(u => u.factionId === 'volskan' && u.inCombat && u.strength < 50).length;
+          stepHomefrontMorale(simWorldRef.current.warRoom, coalitionLosses, volskanLosses, dt);
+
+          // Record snapshot every 40 ticks for Time-Scrubbing timeline
+          if (simTick % 40 === 0) {
+            const nodeOwnersMap: Record<string, FactionId> = {};
+            controlNodes.forEach(n => {
+              nodeOwnersMap[n.id] = n.owner;
+            });
+            const snap: SimHistorySnapshot = {
+              tick: simTick,
+              timeStr: simTimeStr,
+              units: units.map(u => ({
+                id: u.id,
+                type: u.type,
+                x: Math.round(u.x),
+                y: Math.round(u.y),
+                factionId: u.factionId,
+                strength: Math.round(u.strength),
+                inCombat: u.inCombat,
+                heading: Math.round(u.heading),
+                isEncircled: u.isEncircled
+              })),
+              nodeOwners: nodeOwnersMap,
+              activeFlashpointCount: simWorldRef.current.warRoom.flashpoints.filter(f => f.status === 'ACTIVE_CLASH').length
+            };
+            simWorldRef.current.snapshots.push(snap);
+            if (simWorldRef.current.snapshots.length > 80) {
+              simWorldRef.current.snapshots.shift();
+            }
+            setSnapshots([...simWorldRef.current.snapshots]);
+          }
+
+          // Sync WarRoom to React state
+          setWarRoom({ ...simWorldRef.current.warRoom });
         }
       }
 
@@ -2226,6 +2623,48 @@ export default function ProjectBrinkApp() {
       ctx.restore();
     });
 
+    // 7.5 TACTICAL UNIT ORDER VECTORS & AI WAYPOINTS
+    const currentSelectedUnit = units.find(u => u.id === selectedUnitId);
+    if (showOverlays.tacticalOrders || currentSelectedUnit) {
+      units.forEach(u => {
+        if (fowPerspective !== 'all' && u.factionId !== fowPerspective) return;
+        const isSelected = currentSelectedUnit?.id === u.id;
+        if (!showOverlays.tacticalOrders && !isSelected) return;
+
+        const dist = distance(u.x, u.y, u.targetX, u.targetY);
+        if (dist > 15) {
+          ctx.save();
+          const fColor = factions[u.factionId]?.color || '#38bdf8';
+          ctx.strokeStyle = isSelected ? '#38bdf8' : `${fColor}aa`;
+          ctx.lineWidth = isSelected ? 2 : 1;
+          ctx.setLineDash([4, 4]);
+
+          // Draw vector line from unit to target waypoint
+          ctx.beginPath();
+          ctx.moveTo(u.x, u.y);
+          ctx.lineTo(u.targetX, u.targetY);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Waypoint reticle / marker
+          ctx.strokeStyle = isSelected ? '#38bdf8' : fColor;
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+          ctx.beginPath();
+          ctx.arc(u.targetX, u.targetY, isSelected ? 8 : 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Action badge (e.g. [FLANK], [ATTACK], [DEFEND], [RETREAT], [BOMBARD])
+          const actionText = u.currentOrder?.action || (u.isRetreating ? 'RETREAT' : 'OBJ');
+          ctx.font = 'bold 8px monospace';
+          ctx.fillStyle = actionText === 'FLANK' ? '#f59e0b' : actionText === 'RETREAT' ? '#ef4444' : actionText === 'BOMBARD' ? '#fbbf24' : '#38bdf8';
+          ctx.fillText(actionText, u.targetX + 10, u.targetY + 3);
+
+          ctx.restore();
+        }
+      });
+    }
+
     // 8. ARTILLERY ARCS & SHELLS
     artilleryShells.forEach(shell => {
       ctx.save();
@@ -2376,11 +2815,16 @@ export default function ProjectBrinkApp() {
       ctx.restore();
     });
 
-    // 12. FOG OF WAR SHROUD LAYER & RECONNAISSANCE SWEEPS
+    // 12. FOG OF WAR SHROUD LAYER & RECONNAISSANCE SWEEPS (Zero-Allocation Offscreen Canvas Ref)
     if (fowPerspective !== 'all' && showOverlays.fogOfWar) {
-      const fowCanvas = document.createElement('canvas');
-      fowCanvas.width = width;
-      fowCanvas.height = height;
+      if (!fowCanvasRef.current) {
+        fowCanvasRef.current = document.createElement('canvas');
+      }
+      const fowCanvas = fowCanvasRef.current;
+      if (fowCanvas.width !== width || fowCanvas.height !== height) {
+        fowCanvas.width = width;
+        fowCanvas.height = height;
+      }
       const fowCtx = fowCanvas.getContext('2d');
 
       if (fowCtx) {
@@ -2402,7 +2846,20 @@ export default function ProjectBrinkApp() {
           fowCtx.fill();
         });
 
-        // Blit Fog of War shroud onto main display
+        // Illumination Flares punch temporary holes through the night fog of war
+        simWorldRef.current.warRoom.activeFlares.forEach(flare => {
+          const grad = fowCtx.createRadialGradient(flare.x, flare.y, flare.radius * 0.3, flare.x, flare.y, flare.radius);
+          grad.addColorStop(0, 'rgba(0, 0, 0, 1)');
+          grad.addColorStop(0.8, 'rgba(0, 0, 0, 0.7)');
+          grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          fowCtx.fillStyle = grad;
+          fowCtx.beginPath();
+          fowCtx.arc(flare.x, flare.y, flare.radius, 0, Math.PI * 2);
+          fowCtx.fill();
+        });
+
+        // Reset composite operation and blit Fog of War shroud onto main display
+        fowCtx.globalCompositeOperation = 'source-over';
         ctx.drawImage(fowCanvas, 0, 0);
 
         // Draw friendly vision range rings and active reconnaissance scans
@@ -2440,7 +2897,93 @@ export default function ProjectBrinkApp() {
         });
       }
     }
-  }, [airSorties, airbases, artilleryShells, bridges, controlNodes, crtTheme, factions, fowPerspective, reconSweepZones, samMissiles, selectedUnitId, showOverlays, units, visualEffects]);
+
+    // 13. PARACHUTE ILLUMINATION FLARES & MONSOON SQUALL FRONT
+    const activeFlares = simWorldRef.current.warRoom.activeFlares;
+    activeFlares.forEach(fl => {
+      ctx.save();
+      // Glowing flare burst
+      const glowGrad = ctx.createRadialGradient(fl.x, fl.y, 4, fl.x, fl.y, fl.radius);
+      glowGrad.addColorStop(0, 'rgba(254, 240, 138, 0.7)');
+      glowGrad.addColorStop(0.4, 'rgba(245, 158, 11, 0.35)');
+      glowGrad.addColorStop(1, 'rgba(245, 158, 11, 0)');
+      ctx.fillStyle = glowGrad;
+      ctx.beginPath();
+      ctx.arc(fl.x, fl.y, fl.radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Parachute canopy & suspension cords
+      ctx.strokeStyle = '#fef08a';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(fl.x, fl.y - 14, 10, Math.PI, 0, false);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(fl.x - 10, fl.y - 14);
+      ctx.lineTo(fl.x, fl.y);
+      ctx.moveTo(fl.x + 10, fl.y - 14);
+      ctx.lineTo(fl.x, fl.y);
+      ctx.stroke();
+
+      // Magnesium core
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(fl.x, fl.y, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#fef08a';
+      ctx.font = 'bold 8px monospace';
+      ctx.fillText(`* MK-24 FLARE (${Math.ceil(fl.duration - fl.elapsed)}s)`, fl.x + 12, fl.y + 3);
+      ctx.restore();
+    });
+
+    // Monsoon Weather Squall Front
+    const monsoon = simWorldRef.current.warRoom.monsoon;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(100, 116, 139, 0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.arc(monsoon.x, monsoon.y, monsoon.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Weather cloud label & rain streaks
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
+    ctx.font = 'bold 9px monospace';
+    ctx.fillText('☁ MONSOON WEATHER FRONT [CAS MISSIONS GROUNDED]', monsoon.x - 120, monsoon.y - monsoon.radius + 18);
+
+    // Subtle animated rain streaks inside the storm radius
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
+    ctx.lineWidth = 1;
+    for (let r = 0; r < 20; r++) {
+      const rx = monsoon.x + (Math.sin(simTick * 0.1 + r) * monsoon.radius * 0.8);
+      const ry = monsoon.y + (Math.cos(simTick * 0.1 + r * 1.5) * monsoon.radius * 0.8);
+      ctx.beginPath();
+      ctx.moveTo(rx, ry);
+      ctx.lineTo(rx - 4, ry + 12);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 14. ENCIRCLED / KESSEL INDICATOR ON GROUND UNITS
+    units.forEach(u => {
+      if (u.isEncircled && u.strength > 0) {
+        ctx.save();
+        ctx.fillStyle = '#ef4444';
+        ctx.strokeStyle = '#fee2e2';
+        ctx.lineWidth = 1;
+        ctx.font = 'bold 8px monospace';
+        ctx.fillText('⚠ [KESSEL]', u.x - 22, u.y - 18);
+        ctx.beginPath();
+        ctx.arc(u.x, u.y, 18, 0, Math.PI * 2);
+        ctx.setLineDash([2, 3]);
+        ctx.strokeStyle = '#f87171';
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+  }, [airSorties, airbases, artilleryShells, bridges, controlNodes, crtTheme, factions, fowPerspective, reconSweepZones, samMissiles, selectedUnitId, showOverlays, simTick, units, visualEffects]);
 
   /* =========================================================================
      INTERACTION: CLICK INSPECTOR ON CANVAS
@@ -2601,37 +3144,75 @@ export default function ProjectBrinkApp() {
         />
       )}
 
-      {/* TOP HEADER */}
-      <header
-        className={`h-12 border-b-2 flex items-center justify-between px-4 sm:px-6 shadow-[0_0_15px_rgba(74,246,38,0.1)] z-10 shrink-0 ${
-          crtTheme === 'amber' ? 'border-[#b45309] bg-[#1a1204]' : 'border-[#1a2e1a] bg-[#0a120a]'
-        }`}
-      >
+      {/* TOP CONSOLE CHASSIS HEADER */}
+      <header className="h-14 chassis-seafoam border-b-4 border-[#1c2920] flex items-center justify-between px-4 sm:px-6 shadow-lg z-20 shrink-0 select-none">
         <div className="flex items-center gap-3 sm:gap-4">
-          <span className="text-base sm:text-lg font-bold tracking-tighter">
-            PROJECT BRINK <span className="animate-pulse">_</span>
-          </span>
-          <div className={`h-4 w-px hidden sm:block ${crtTheme === 'amber' ? 'bg-[#b45309]' : 'bg-[#1a2e1a]'}`} />
-          <span className="text-xs opacity-70 hidden sm:inline">V1.0.4-COLD_WAR_SIM</span>
+          <div className="flex items-center gap-1.5">
+            <JewelIndicator color="emerald" active={true} label="PWR" size="sm" />
+            <JewelIndicator color="amber" active={defcon <= 3} label="DEFCON" size="sm" />
+          </div>
+          <div className="border-l border-[#4d6354] pl-2 sm:pl-3">
+            <span className="text-sm sm:text-base font-space font-bold tracking-tight text-[#d1fae5] flex items-center gap-1">
+              PROJECT BRINK <span className="text-amber-400 text-xs">SAC-63</span>
+            </span>
+            <div className="text-[9px] font-industrial text-[#a7f3d0]/75 hidden sm:block">
+              1963 COLD WAR DEMARCATION SIMULATION
+            </div>
+          </div>
         </div>
 
-        {/* METRICS */}
-        <div className="flex items-center gap-4 sm:gap-8 text-[10px] uppercase tracking-widest">
-          <div className="flex flex-col">
-            <span className="opacity-50 text-[9px]">Sim-Time</span>
-            <span className="font-bold text-xs">
-              {String(simHour).padStart(2, '0')}:{String(Math.floor(simMinute)).padStart(2, '0')}:
-              {String((simTick % 60) * 1).padStart(2, '0')}
+        {/* VIEW MODE & DISPATCH ANNUNCIATOR TILES */}
+        <div className="flex items-center gap-2">
+          <AnnunciatorButton
+            label="STRATEGIC WAR ROOM"
+            sublabel="DR. STRANGELOVE"
+            active={viewMode === 'strategic'}
+            color={viewMode === 'strategic' ? 'amber' : 'green'}
+            onClick={() => {
+              audioSys.playRadioStatic();
+              setViewMode('strategic');
+            }}
+          />
+
+          <AnnunciatorButton
+            label="TACTICAL RADAR SCOPE"
+            sublabel="CATHODE RAY SCOPE"
+            active={viewMode === 'tactical'}
+            color={viewMode === 'tactical' ? 'amber' : 'blue'}
+            onClick={() => {
+              audioSys.playRadioStatic();
+              setViewMode('tactical');
+            }}
+          />
+
+          <AnnunciatorButton
+            label="PRESS DISPATCH"
+            sublabel="WIRE CABLES"
+            active={newspaperOpen}
+            color="orange"
+            onClick={() => {
+              audioSys.playTeletype();
+              setNewspaperOpen(true);
+            }}
+          />
+        </div>
+
+        {/* METRICS & NIXIE CLOCK */}
+        <div className="flex items-center gap-4 sm:gap-6">
+          <NixieTube
+            value={`${String(simHour).padStart(2, '0')}:${String(Math.floor(simMinute)).padStart(2, '0')}`}
+            label="SIM TIME"
+            size="sm"
+          />
+
+          <div className="hidden lg:flex flex-col items-end">
+            <span className="text-[8px] font-space font-bold tracking-widest text-[#a7f3d0]">
+              DEFCON
             </span>
-          </div>
-          <div className="hidden md:flex flex-col">
-            <span className="opacity-50 text-[9px]">Location</span>
-            <span className="text-xs">SAN PIETRO // SECTOR-44</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="opacity-50 text-[9px] text-amber-500">Defcon</span>
-            <span className="text-amber-500 font-bold text-xs">
-              LVL {defcon} - {defcon === 1 ? 'CRITICAL' : defcon === 2 ? 'IMMINENT' : defcon === 3 ? 'ELEVATED' : 'STABLE'}
+            <span className={`text-xs font-space font-black ${
+              defcon <= 2 ? 'text-red-400 animate-pulse' : defcon === 3 ? 'text-amber-400' : 'text-emerald-400'
+            }`}>
+              LVL {defcon}
             </span>
           </div>
         </div>
@@ -2639,7 +3220,7 @@ export default function ProjectBrinkApp() {
 
       {/* UNIFICATION EMERGENCY NOTIFICATION BANNER */}
       {unificationBanner && (
-        <div className="bg-yellow-500 text-black px-4 py-1.5 flex items-center justify-between font-bold text-xs uppercase tracking-widest animate-pulse border-b border-black z-20">
+        <div className="bg-amber-500 text-black px-4 py-1.5 flex items-center justify-between font-bold text-xs uppercase tracking-widest animate-pulse border-b border-black z-20">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4" />
             <span>{unificationBanner}</span>
@@ -2653,8 +3234,35 @@ export default function ProjectBrinkApp() {
         </div>
       )}
 
-      {/* MAIN VIEWPORT WORKSPACE */}
-      <main className="flex-1 flex flex-col xl:flex-row overflow-hidden relative">
+      {/* MAIN VIEWPORT WORKSPACE: STRATEGIC WAR ROOM OR TACTICAL RADAR */}
+      {viewMode === 'strategic' ? (
+        <div className="flex-1 flex flex-col overflow-hidden relative">
+          <StrategicMapRoom
+            warRoom={warRoom}
+            diplomaticLedger={diplomaticLedger}
+            economyState={economyState}
+            defcon={defcon}
+            simTimeStr={`${String(simHour).padStart(2, '0')}:${String(Math.floor(simMinute)).padStart(2, '0')} HRS, OCT 1963`}
+            simTick={simTick}
+            unifiedState={unifiedState}
+            isPlaying={isPlaying}
+            onTogglePlay={() => setIsPlaying(p => !p)}
+            onTuneInToTactical={() => {
+              audioSys.playRadioStatic();
+              setViewMode('tactical');
+            }}
+            onOpenNewspaper={(b) => {
+              setSelectedBattleForNews(b || null);
+              setNewspaperOpen(true);
+            }}
+            onTriggerUnification={() => triggerUnification('San Pietro Sovereign National Council')}
+            simSpeed={simSpeed}
+            onChangeSpeed={(s) => setSimSpeed(s)}
+            transmissions={transmissions}
+          />
+        </div>
+      ) : (
+        <main className="flex-1 flex flex-col xl:flex-row overflow-hidden relative">
         {/* LEFT ASIDE: ACTIVE FACTIONS & AI CORE ENGINE */}
         <aside
           className={`w-full xl:w-64 border-b-2 xl:border-b-0 xl:border-r-2 flex flex-col p-3 gap-3 overflow-y-auto shrink-0 max-h-[35vh] xl:max-h-none ${
@@ -2865,171 +3473,138 @@ export default function ProjectBrinkApp() {
             </div>
           </div>
 
-          {/* BOTTOM CONTROLS DOCK */}
-          <div
-            className={`h-14 sm:h-16 border-t-2 flex items-center px-3 sm:px-4 gap-3 sm:gap-6 flex-wrap z-10 shrink-0 ${
-              crtTheme === 'amber' ? 'border-[#b45309] bg-[#140e03]/95' : 'border-[#1a2e1a] bg-[#0a120a]/95'
-            }`}
-          >
-            {/* Play / Step Buttons */}
+          {/* TIME SCRUBBER REPLAY TIMELINE */}
+          <TimeScrubber
+            snapshots={snapshots}
+            scrubIndex={scrubIndex}
+            onScrubChange={(idx) => {
+              const snap = snapshots[idx];
+              if (snap) {
+                setScrubIndex(idx);
+                setIsPlaying(false);
+                setUnits(prev => prev.map(u => {
+                  const snapU = snap.units.find(su => su.id === u.id);
+                  if (snapU) {
+                    return {
+                      ...u,
+                      x: snapU.x,
+                      y: snapU.y,
+                      strength: snapU.strength,
+                      inCombat: snapU.inCombat,
+                      heading: snapU.heading
+                    };
+                  }
+                  return u;
+                }));
+              }
+            }}
+            onReturnToLive={() => {
+              setScrubIndex(-1);
+              setIsPlaying(true);
+            }}
+            isPlaying={isPlaying}
+            onTogglePlay={() => setIsPlaying(p => !p)}
+            liveTimeStr={`${String(simHour).padStart(2, '0')}:${String(simMinute).padStart(2, '0')} HRS`}
+          />
+
+          {/* 1960s BOTTOM CONSOLE CHASSIS DOCK */}
+          <div className="chassis-grey border-t-4 border-[#242b32] flex items-center px-4 py-2 gap-4 flex-wrap z-10 shrink-0 select-none shadow-lg">
+            {/* Play / Advance Annunciators */}
             <div className="flex items-center gap-2">
-              <button
+              <AnnunciatorButton
+                label={isPlaying ? 'PAUSE' : 'ADVANCE'}
+                sublabel={isPlaying ? 'CLOCK ACTIVE' : 'SYSTEM HELD'}
+                active={isPlaying}
+                color={isPlaying ? 'amber' : 'green'}
                 onClick={() => setIsPlaying(!isPlaying)}
-                className={`w-8 h-8 flex items-center justify-center border font-bold text-xs ${
-                  crtTheme === 'amber'
-                    ? 'border-[#f59e0b] hover:bg-[#f59e0b] hover:text-black'
-                    : 'border-[#4af626] hover:bg-[#4af626] hover:text-black'
-                }`}
-                title={isPlaying ? 'Pause' : 'Run'}
-                id="play-pause-btn"
-              >
-                {isPlaying ? '‖' : '▶'}
-              </button>
+              />
 
-              <button
+              <AnnunciatorButton
+                label="STEP TICK"
+                sublabel="+1 PULSE"
+                active={false}
+                color="blue"
                 onClick={() => setSimTick(t => t + 1)}
-                className={`w-8 h-8 flex items-center justify-center border text-[11px] font-bold opacity-75 hover:opacity-100 ${
-                  crtTheme === 'amber'
-                    ? 'border-[#f59e0b]/40 hover:border-[#f59e0b]'
-                    : 'border-[#4af626]/40 hover:border-[#4af626]'
-                }`}
-                title="Step +1 Tick"
-                id="step-tick-btn"
-              >
-                +1
-              </button>
+              />
             </div>
 
-            {/* Speed Indicator */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] opacity-50">SPEED:</span>
-              <span className="text-[10px] text-amber-500 underline decoration-double font-bold mr-1">
-                {simSpeed}.0x REAL-TIME
-              </span>
-              <div
-                className={`flex items-center border rounded overflow-hidden ${
-                  crtTheme === 'amber' ? 'border-[#b45309]' : 'border-[#1a2e1a]'
-                }`}
-              >
-                {[1, 2, 5, 10].map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setSimSpeed(s)}
-                    className={`px-1.5 sm:px-2 py-0.5 text-[10px] font-bold ${
-                      simSpeed === s
-                        ? crtTheme === 'amber'
-                          ? 'bg-[#f59e0b] text-black'
-                          : 'bg-[#4af626] text-black'
-                        : 'hover:bg-white/10'
-                    }`}
-                  >
-                    {s}x
-                  </button>
-                ))}
-              </div>
+            {/* Knurled Aluminum Rotary Speed Switch */}
+            <div className="border-l border-[#3a4550] pl-3">
+              <RotarySpeedDial
+                speed={simSpeed}
+                onChangeSpeed={(s) => setSimSpeed(s)}
+                label="SPEED SELECTOR"
+              />
             </div>
 
-            {/* Live Teletype Ticker */}
-            <div
-              className={`hidden 2xl:flex flex-1 max-w-xs xl:max-w-md truncate text-[10px] opacity-90 border-x px-3 py-1 ${
-                crtTheme === 'amber' ? 'border-[#b45309] bg-[#0c0802]' : 'border-[#1a2e1a] bg-[#050805]'
-              }`}
-            >
-              <span className="font-bold mr-1.5 text-yellow-400">TELETYPE:</span>
-              <span className="truncate">{transmissions[0]?.message || 'SIGNAL MONITORING STATIONS SILENT.'}</span>
-            </div>
+            {/* Tactical Annunciator Toggles & Filters */}
+            <div className="ml-auto flex items-center gap-2 flex-wrap">
+              <AnnunciatorButton
+                label="ORDERS"
+                sublabel="VECTORS"
+                active={showOverlays.tacticalOrders}
+                color="blue"
+                onClick={() => setShowOverlays(prev => ({ ...prev, tacticalOrders: !prev.tacticalOrders }))}
+              />
 
-            {/* Toggles & War Archive */}
-            <div className="ml-auto flex items-center gap-1.5 flex-wrap">
-              <button
+              <AnnunciatorButton
+                label="TERRAIN"
+                sublabel="CONTOURS"
+                active={showOverlays.terrainZones}
+                color="amber"
                 onClick={() => setShowOverlays(prev => ({ ...prev, terrainZones: !prev.terrainZones }))}
-                className={`px-2 py-1 border text-[9px] uppercase ${
-                  showOverlays.terrainZones
-                    ? 'bg-amber-950/80 text-amber-300 border-amber-500'
-                    : crtTheme === 'amber'
-                    ? 'border-[#b45309] hover:bg-[#b45309]/30'
-                    : 'border-[#1a2e1a] hover:bg-[#1a2e1a]'
-                }`}
-                title="Toggle Mud, Forest, Hills, Urban vector polygons"
-              >
-                Terrain [{showOverlays.terrainZones ? 'ON' : 'OFF'}]
-              </button>
+              />
 
-              <button
+              <AnnunciatorButton
+                label="FOG OF WAR"
+                sublabel="RADAR VIS"
+                active={showOverlays.fogOfWar}
+                color="green"
                 onClick={() => setShowOverlays(prev => ({ ...prev, fogOfWar: !prev.fogOfWar }))}
-                className={`px-2 py-1 border text-[9px] uppercase ${
-                  showOverlays.fogOfWar
-                    ? 'bg-blue-950/80 text-blue-300 border-blue-500'
-                    : crtTheme === 'amber'
-                    ? 'border-[#b45309] hover:bg-[#b45309]/30'
-                    : 'border-[#1a2e1a] hover:bg-[#1a2e1a]'
-                }`}
-                title="Toggle Fog of War Line of Sight Shroud"
-              >
-                FoW [{showOverlays.fogOfWar ? 'ON' : 'OFF'}]
-              </button>
+              />
 
-              <button
+              <AnnunciatorButton
+                label="FLANKS"
+                sublabel="AMBUSH"
+                active={showOverlays.flankingArcs}
+                color="red"
                 onClick={() => setShowOverlays(prev => ({ ...prev, flankingArcs: !prev.flankingArcs }))}
-                className={`px-2 py-1 border text-[9px] uppercase ${
-                  showOverlays.flankingArcs
-                    ? 'bg-red-950 text-red-300 border-red-500'
-                    : crtTheme === 'amber'
-                    ? 'border-[#b45309] hover:bg-[#b45309]/30'
-                    : 'border-[#1a2e1a] hover:bg-[#1a2e1a]'
-                }`}
-              >
-                Flanks [{showOverlays.flankingArcs ? 'ON' : 'OFF'}]
-              </button>
+              />
 
-              <button
+              <AnnunciatorButton
+                label="CRT RASTER"
+                sublabel={scanlines ? 'SCANLINES ON' : 'DISABLED'}
+                active={scanlines}
+                color="green"
                 onClick={() => setScanlines(!scanlines)}
-                className={`px-2 py-1 border text-[9px] uppercase ${
-                  scanlines
-                    ? 'bg-emerald-950 text-emerald-300 border-emerald-500'
-                    : crtTheme === 'amber'
-                    ? 'border-[#b45309] hover:bg-[#b45309]/30'
-                    : 'border-[#1a2e1a] hover:bg-[#1a2e1a]'
-                }`}
-              >
-                CRT [{scanlines ? 'ON' : 'OFF'}]
-              </button>
+              />
 
-              <button
+              <AnnunciatorButton
+                label={crtTheme === 'amber' ? 'AMBER CRT' : 'GREEN CRT'}
+                sublabel="PHOSPHOR"
+                active={true}
+                color={crtTheme === 'amber' ? 'amber' : 'green'}
                 onClick={() => setCrtTheme(t => (t === 'amber' ? 'green' : 'amber'))}
-                className={`px-2 py-1 border text-[9px] uppercase ${
-                  crtTheme === 'amber' ? 'border-[#b45309] hover:bg-[#b45309]/30' : 'border-[#1a2e1a] hover:bg-[#1a2e1a]'
-                }`}
-              >
-                {crtTheme === 'amber' ? 'PHOSPHOR GREEN' : 'AMBER CRT'}
-              </button>
+              />
 
-              <button
+              <AnnunciatorButton
+                label="AUDIO WIRE"
+                sublabel={soundEnabled ? 'RECEIVER ON' : 'MUTED'}
+                active={soundEnabled}
+                color={soundEnabled ? 'green' : 'red'}
                 onClick={() => setSoundEnabled(!soundEnabled)}
-                className={`p-1 border text-xs ${
-                  crtTheme === 'amber' ? 'border-[#b45309] hover:bg-[#b45309]/30' : 'border-[#1a2e1a] hover:bg-[#1a2e1a]'
-                }`}
-                title="Audio Synthesizer"
-              >
-                {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
-              </button>
+              />
 
               <button
                 onClick={exportWarArchive}
-                className={`px-2.5 py-1 border text-[9px] uppercase ${
-                  crtTheme === 'amber' ? 'border-[#b45309] hover:bg-[#b45309]/30' : 'border-[#1a2e1a] hover:bg-[#1a2e1a]'
-                }`}
+                className="px-2.5 py-1 bg-[#252c34] hover:bg-[#323b45] border border-[#485664] text-[#d6e2d9] font-space text-[9px] uppercase tracking-wider rounded-sm shadow-sm transition-colors"
                 id="export-archive-btn"
               >
-                Export State .JSON
+                Archive .JSON
               </button>
 
-              <label
-                className={`px-2.5 py-1 border text-[9px] uppercase cursor-pointer ${
-                  crtTheme === 'amber' ? 'border-[#b45309] hover:bg-[#b45309]/30' : 'border-[#1a2e1a] hover:bg-[#1a2e1a]'
-                }`}
-              >
-                Import State
+              <label className="px-2.5 py-1 bg-[#252c34] hover:bg-[#323b45] border border-[#485664] text-[#d6e2d9] font-space text-[9px] uppercase tracking-wider cursor-pointer rounded-sm shadow-sm transition-colors">
+                Load State
                 <input type="file" accept=".json" onChange={importWarArchive} className="hidden" />
               </label>
             </div>
@@ -3232,6 +3807,129 @@ export default function ProjectBrinkApp() {
                     <div className="flex justify-between text-[10px] border-t border-[#1a2e1a] pt-1">
                       <span>ENTRENCHMENT: +{Math.round(selectedUnit.entrenchment)}%</span>
                       <span className="text-yellow-400">KILLS: {selectedUnit.kills}</span>
+                    </div>
+
+                    {/* Active AI Order Card */}
+                    <div className="p-2 bg-black/60 border border-blue-900/60 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-bold text-blue-400 flex items-center gap-1">
+                          <Radio className="w-2.5 h-2.5 animate-pulse" />
+                          <span>AI TACTICAL ORDER</span>
+                        </span>
+                        <span className={`text-[8px] px-1 py-0.5 border font-bold ${
+                          selectedUnit.currentOrder?.action === 'FLANK' ? 'border-amber-500 text-amber-300 bg-amber-950/40' :
+                          selectedUnit.currentOrder?.action === 'RETREAT' ? 'border-red-500 text-red-300 bg-red-950/40' :
+                          selectedUnit.currentOrder?.action === 'BOMBARD' ? 'border-yellow-500 text-yellow-300 bg-yellow-950/40' :
+                          'border-cyan-500 text-cyan-300 bg-cyan-950/40'
+                        }`}>
+                          {selectedUnit.currentOrder?.action || (selectedUnit.isRetreating ? 'RETREAT' : 'PATROL')}
+                        </span>
+                      </div>
+                      <div className="text-[9px] text-neutral-300 font-mono italic">
+                        &quot;{selectedUnit.currentOrder?.orderText || 'Conducting sector security & holding key chokepoints'}&quot;
+                      </div>
+                      <div className="text-[8px] opacity-60 flex justify-between">
+                        <span>WAYPOINT: [{Math.round(selectedUnit.targetX)}, {Math.round(selectedUnit.targetY)}]</span>
+                        <span>STATUS: {selectedUnit.inCombat ? 'IN COMBAT' : selectedUnit.isRetreating ? 'RETREATING' : 'MANEUVERING'}</span>
+                      </div>
+                    </div>
+
+                    {/* Quick Tactical Command Override Buttons */}
+                    <div className="pt-1 border-t border-[#1a2e1a] space-y-1">
+                      <div className="text-[8px] uppercase tracking-wider text-neutral-400 font-bold">TACTICAL DIRECTIVES (DIRECT / AI)</div>
+                      <div className="grid grid-cols-2 gap-1">
+                        <button
+                          onClick={() => {
+                            const enemy = units.find(other => other.id !== selectedUnit.id && other.factionId !== selectedUnit.factionId && other.strength > 0);
+                            if (enemy) {
+                              const flankAngleRad = ((enemy.heading + 90) * Math.PI) / 180;
+                              const flankX = Math.round(enemy.x + Math.cos(flankAngleRad) * 80);
+                              const flankY = Math.round(enemy.y + Math.sin(flankAngleRad) * 80);
+                              setUnits(prev => prev.map(u => u.id === selectedUnit.id ? {
+                                ...u,
+                                targetX: flankX,
+                                targetY: flankY,
+                                currentOrder: {
+                                  action: 'FLANK',
+                                  targetX: flankX,
+                                  targetY: flankY,
+                                  targetUnitId: enemy.id,
+                                  orderText: `COMMAND: MANUAL FLANKING MANEUVER ON ${enemy.name.toUpperCase()}`,
+                                  issuedTick: simTick,
+                                  aiControlled: true
+                                }
+                              } : u));
+                            }
+                          }}
+                          className="px-1.5 py-1 text-[8px] font-bold border border-amber-500/60 bg-amber-950/30 hover:bg-amber-900/60 text-amber-300 text-left"
+                        >
+                          ⚡ EXECUTE FLANK
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setUnits(prev => prev.map(u => u.id === selectedUnit.id ? {
+                              ...u,
+                              targetX: u.x,
+                              targetY: u.y,
+                              currentOrder: {
+                                action: 'DEFEND',
+                                targetX: u.x,
+                                targetY: u.y,
+                                orderText: 'COMMAND: DIG IN AND FORTIFY CURRENT PERIMETER',
+                                issuedTick: simTick,
+                                aiControlled: true
+                              }
+                            } : u));
+                          }}
+                          className="px-1.5 py-1 text-[8px] font-bold border border-emerald-500/60 bg-emerald-950/30 hover:bg-emerald-900/60 text-emerald-300 text-left"
+                        >
+                          🛡️ DIG IN & DEFEND
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            const friendlyNodes = controlNodes.filter(n => n.owner === selectedUnit.factionId || (selectedUnit.factionId === 'unified' && n.owner === 'unified'));
+                            const best = friendlyNodes[0] || controlNodes[0];
+                            setUnits(prev => prev.map(u => u.id === selectedUnit.id ? {
+                              ...u,
+                              targetX: best.x,
+                              targetY: best.y,
+                              isRetreating: true,
+                              currentOrder: {
+                                action: 'RETREAT',
+                                targetX: best.x,
+                                targetY: best.y,
+                                orderText: `COMMAND: TACTICAL RETREAT TO ${best.name.toUpperCase()}`,
+                                issuedTick: simTick,
+                                aiControlled: true
+                              }
+                            } : u));
+                          }}
+                          className="px-1.5 py-1 text-[8px] font-bold border border-red-500/60 bg-red-950/30 hover:bg-red-900/60 text-red-300 text-left"
+                        >
+                          🏃 TACTICAL RETREAT
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setUnits(prev => prev.map(u => u.id === selectedUnit.id ? {
+                              ...u,
+                              currentOrder: {
+                                action: 'MOVE',
+                                targetX: u.targetX,
+                                targetY: u.targetY,
+                                orderText: 'AUTONOMOUS GEMINI AI CONTROL RESTORED',
+                                issuedTick: simTick,
+                                aiControlled: true
+                              }
+                            } : u));
+                          }}
+                          className="px-1.5 py-1 text-[8px] font-bold border border-blue-500/60 bg-blue-950/30 hover:bg-blue-900/60 text-blue-300 text-left"
+                        >
+                          🤖 AI AUTONOMY
+                        </button>
+                      </div>
                     </div>
 
                     {/* Flank Alert */}
@@ -3667,6 +4365,15 @@ export default function ProjectBrinkApp() {
           )}
         </aside>
       </main>
+      )}
+
+      {/* 1960S NEWSPAPER DISPATCH MODAL */}
+      <NewspaperModal
+        isOpen={newspaperOpen}
+        onClose={() => setNewspaperOpen(false)}
+        battle={selectedBattleForNews}
+        simTimeStr={`${String(simHour).padStart(2, '0')}:${String(Math.floor(simMinute)).padStart(2, '0')} HRS, OCT 1963`}
+      />
 
       {/* FOOTER */}
       <footer
