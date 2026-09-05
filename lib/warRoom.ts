@@ -82,8 +82,28 @@ export interface StrategicLogisticsLine {
   progress: number; // 0 to 100
 }
 
+export interface StrategicDivision {
+  id: string;
+  factionId: FactionId;
+  designation: string;
+  scale: 'XX' | 'XXX';
+  symbolType: 'ARMOR' | 'INFANTRY' | 'MECHANIZED' | 'ARTILLERY' | 'AIRBORNE' | 'MARINE';
+  troopCount: number;
+  readiness: number; // 0 to 100
+  fuelSupply: number; // 0 to 100
+  currentSector: string;
+  x: number;
+  y: number;
+  targetX?: number;
+  targetY?: number;
+  orderDirective: string;
+  battlegroupRole: 'SPEARHEAD' | 'FLANK_GUARD' | 'FIRE_SUPPORT' | 'STRATEGIC_RESERVE';
+  regimentCount: number;
+}
+
 export interface WarRoomState {
   commanders: Record<FactionId, CommanderProfile>;
+  strategicDivisions: StrategicDivision[];
   flashpoints: FlashpointBattle[];
   activeFlares: IlluminationFlare[];
   monsoon: MonsoonFront;
@@ -224,6 +244,120 @@ function buildCommanderProfile(
 export function createInitialWarRoom(): WarRoomState {
   return {
     commanders: generateInitialCommanders(),
+    strategicDivisions: [
+      // San Pietro Loyalists
+      {
+        id: 'div-loy-1',
+        factionId: 'loyalists',
+        designation: '1ST "CENTAUR" ARMORED DIV',
+        scale: 'XX',
+        symbolType: 'ARMOR',
+        troopCount: 12400,
+        readiness: 94,
+        fuelSupply: 88,
+        currentSector: 'Santa Maria Industrial Corridor',
+        x: 640,
+        y: 420,
+        targetX: 580,
+        targetY: 490,
+        orderDirective: 'SPEARHEAD: Hold Delta Causeway & Oil Axis',
+        battlegroupRole: 'SPEARHEAD',
+        regimentCount: 4
+      },
+      {
+        id: 'div-loy-2',
+        factionId: 'loyalists',
+        designation: '4TH PRESIDENTIAL GUARD CORPS',
+        scale: 'XXX',
+        symbolType: 'INFANTRY',
+        troopCount: 18200,
+        readiness: 98,
+        fuelSupply: 95,
+        currentSector: 'Santa Maria Citadel Redoubt',
+        x: 780,
+        y: 280,
+        targetX: 780,
+        targetY: 280,
+        orderDirective: 'DEFENSIVE HOLD: Fortify Capital Perimeter',
+        battlegroupRole: 'STRATEGIC_RESERVE',
+        regimentCount: 5
+      },
+      // San Pietro Liberation Front (Rebels)
+      {
+        id: 'div-reb-1',
+        factionId: 'rebels',
+        designation: '3RD SIERRA VANGUARD DIV',
+        scale: 'XX',
+        symbolType: 'MECHANIZED',
+        troopCount: 11800,
+        readiness: 89,
+        fuelSupply: 74,
+        currentSector: 'Monte Oro North Pass',
+        x: 420,
+        y: 520,
+        targetX: 520,
+        targetY: 480,
+        orderDirective: 'FLANK AMBUSH: Sever Northern Supply Veins',
+        battlegroupRole: 'SPEARHEAD',
+        regimentCount: 4
+      },
+      {
+        id: 'div-reb-2',
+        factionId: 'rebels',
+        designation: 'SIERRA 1ST HIGHLAND BRIGADE',
+        scale: 'XX',
+        symbolType: 'INFANTRY',
+        troopCount: 9600,
+        readiness: 85,
+        fuelSupply: 68,
+        currentSector: 'Sierra Madre Redoubt Caves',
+        x: 340,
+        y: 660,
+        targetX: 420,
+        targetY: 610,
+        orderDirective: 'FIRE SUPPORT: Mountain Mortars & Ambush',
+        battlegroupRole: 'FLANK_GUARD',
+        regimentCount: 3
+      },
+      // Atlantic Coalition
+      {
+        id: 'div-coa-1',
+        factionId: 'coalition',
+        designation: '7TH EXPEDITIONARY STRIKE DIV',
+        scale: 'XX',
+        symbolType: 'MARINE',
+        troopCount: 15400,
+        readiness: 96,
+        fuelSupply: 92,
+        currentSector: 'Task Force 72 Coastal Anchorage',
+        x: 220,
+        y: 430,
+        targetX: 380,
+        targetY: 480,
+        orderDirective: 'SPEARHEAD: Air Umbrella & Armor Thrust',
+        battlegroupRole: 'SPEARHEAD',
+        regimentCount: 4
+      },
+      // Volskan Union
+      {
+        id: 'div-vol-1',
+        factionId: 'volskan',
+        designation: '8TH GUARDS SHOCK ARMY CORPS',
+        scale: 'XXX',
+        symbolType: 'ARTILLERY',
+        troopCount: 24600,
+        readiness: 97,
+        fuelSupply: 90,
+        currentSector: 'Trans-Steppe Railhead Terminal',
+        x: 1040,
+        y: 380,
+        targetX: 920,
+        targetY: 420,
+        orderDirective: 'FIRE SUPPORT: 152mm Mass Artillery Salvo',
+        battlegroupRole: 'FIRE_SUPPORT',
+        regimentCount: 5
+      }
+    ],
     flashpoints: [],
     activeFlares: [],
     monsoon: {

@@ -229,10 +229,16 @@ export const StrategicMapRoom: React.FC<StrategicMapRoomProps> = ({
                 stroke="#1f3b4d"
                 strokeWidth="2.5"
               />
-              <text x="60" y="240" fill="#38bdf8" opacity="0.6" fontSize="14" fontWeight="bold" letterSpacing="5" fontFamily="'Orbitron', sans-serif">
+              {/* Bathymetric Depth Sounding Lines */}
+              <path d="M 0 120 Q 140 160 210 310 Q 150 480 210 800" fill="none" stroke="#1d4ed8" strokeWidth="1" strokeDasharray="5 5" opacity="0.4" />
+              <path d="M 0 240 Q 100 280 170 380 Q 110 520 160 800" fill="none" stroke="#1e40af" strokeWidth="1" strokeDasharray="3 4" opacity="0.3" />
+              <text x="40" y="160" fill="#60a5fa" opacity="0.4" fontSize="8" fontFamily="'Courier Prime', monospace">DEPTH CONTOUR -50M</text>
+              <text x="30" y="320" fill="#3b82f6" opacity="0.35" fontSize="8" fontFamily="'Courier Prime', monospace">CONTINENTAL SHELF -120M</text>
+
+              <text x="60" y="240" fill="#38bdf8" opacity="0.7" fontSize="14" fontWeight="bold" letterSpacing="5" fontFamily="'Orbitron', sans-serif">
                 ATLANTIC COALITION SECTOR
               </text>
-              <text x="60" y="262" fill="#7dd3fc" opacity="0.45" fontSize="10" letterSpacing="3" fontFamily="'Courier Prime', monospace">
+              <text x="60" y="262" fill="#7dd3fc" opacity="0.5" fontSize="10" letterSpacing="3" fontFamily="'Courier Prime', monospace">
                 TASK FORCE 72 CARRIER BATTLE GROUP PATROL
               </text>
 
@@ -243,10 +249,10 @@ export const StrategicMapRoom: React.FC<StrategicMapRoomProps> = ({
                 stroke="#4a2520"
                 strokeWidth="2.5"
               />
-              <text x="1060" y="240" fill="#f87171" opacity="0.6" fontSize="14" fontWeight="bold" letterSpacing="5" fontFamily="'Orbitron', sans-serif">
+              <text x="1060" y="240" fill="#f87171" opacity="0.7" fontSize="14" fontWeight="bold" letterSpacing="5" fontFamily="'Orbitron', sans-serif">
                 VOLSKAN UNION SECTOR
               </text>
-              <text x="1060" y="262" fill="#fca5a5" opacity="0.45" fontSize="10" letterSpacing="3" fontFamily="'Courier Prime', monospace">
+              <text x="1060" y="262" fill="#fca5a5" opacity="0.5" fontSize="10" letterSpacing="3" fontFamily="'Courier Prime', monospace">
                 TRANS-STEPPE STRATEGIC HEAVY RAILHEADS
               </text>
 
@@ -258,10 +264,16 @@ export const StrategicMapRoom: React.FC<StrategicMapRoomProps> = ({
                 stroke="#2f543c"
                 strokeWidth="3"
               />
-              <text x="500" y="180" fill="#86efac" opacity="0.75" fontSize="20" fontWeight="bold" letterSpacing="8" fontFamily="'Orbitron', sans-serif">
+              {/* Topographic Contour Relief Elevation Bands */}
+              <path d="M 360 40 Q 640 90 940 30" fill="none" stroke="#2a4533" strokeWidth="1.2" strokeDasharray="4 3" opacity="0.7" />
+              <path d="M 400 90 Q 660 140 880 80" fill="none" stroke="#375a43" strokeWidth="1.5" opacity="0.6" />
+              <path d="M 460 140 Q 670 190 820 130" fill="none" stroke="#466f54" strokeWidth="1.2" opacity="0.5" />
+              <text x="730" y="115" fill="#86efac" opacity="0.35" fontSize="8" fontFamily="'Courier Prime', monospace">+500M CONTOUR</text>
+
+              <text x="500" y="180" fill="#86efac" opacity="0.8" fontSize="20" fontWeight="bold" letterSpacing="8" fontFamily="'Orbitron', sans-serif">
                 NORTH SAN PIETRO
               </text>
-              <text x="500" y="205" fill="#a7f3d0" opacity="0.5" fontSize="11" letterSpacing="3" fontFamily="'Courier Prime', monospace">
+              <text x="500" y="205" fill="#a7f3d0" opacity="0.55" fontSize="11" letterSpacing="3" fontFamily="'Courier Prime', monospace">
                 PRESIDENTIAL JUNTA FORTIFIED ARMORED CORRIDOR
               </text>
 
@@ -272,11 +284,38 @@ export const StrategicMapRoom: React.FC<StrategicMapRoomProps> = ({
                 stroke="#543029"
                 strokeWidth="3"
               />
-              <text x="520" y="600" fill="#fca5a5" opacity="0.75" fontSize="20" fontWeight="bold" letterSpacing="8" fontFamily="'Orbitron', sans-serif">
+              {/* Mountain Peaks & Ridge Contours */}
+              <path d="M 300 680 Q 520 580 880 720" fill="none" stroke="#4a2c26" strokeWidth="1.5" strokeDasharray="6 3" opacity="0.6" />
+              <path d="M 340 730 Q 560 630 840 760" fill="none" stroke="#5c3830" strokeWidth="1.8" opacity="0.7" />
+              <text x="440" y="715" fill="#fca5a5" opacity="0.4" fontSize="9" fontFamily="'Courier Prime', monospace">▲ CORDILLERA CENTRAL (+1200M PEAKS)</text>
+              <text x="760" y="650" fill="#fca5a5" opacity="0.35" fontSize="8" fontFamily="'Courier Prime', monospace">▲ MONTE ORO RIDGE +1180M</text>
+
+              <text x="520" y="600" fill="#fca5a5" opacity="0.8" fontSize="20" fontWeight="bold" letterSpacing="8" fontFamily="'Orbitron', sans-serif">
                 SIERRA HIGHLANDS
               </text>
-              <text x="510" y="625" fill="#fecaca" opacity="0.5" fontSize="11" letterSpacing="3" fontFamily="'Courier Prime', monospace">
+              <text x="510" y="625" fill="#fecaca" opacity="0.55" fontSize="11" letterSpacing="3" fontFamily="'Courier Prime', monospace">
                 LIBERATION FRONT AUTONOMOUS CADRES
+              </text>
+
+              {/* Rio Santo Winding River System & Delta Hydrology */}
+              <path
+                d="M 320 0 Q 380 180 500 280 Q 640 430 760 490 Q 880 580 940 800"
+                fill="none"
+                stroke="#0284c7"
+                strokeWidth="8"
+                strokeLinecap="round"
+                opacity="0.5"
+              />
+              <path
+                d="M 320 0 Q 380 180 500 280 Q 640 430 760 490 Q 880 580 940 800"
+                fill="none"
+                stroke="#38bdf8"
+                strokeWidth="2"
+                strokeDasharray="8 4"
+                opacity="0.8"
+              />
+              <text x="430" y="220" fill="#7dd3fc" opacity="0.6" fontSize="9" fontWeight="bold" letterSpacing="2" fontFamily="'Special Elite', monospace" transform="rotate(35, 430, 220)">
+                RIO SANTO MAIN WATERWAY
               </text>
 
               {/* Disputed Demarcation Ceasefire Line (Grease-Pencil Orange Line) */}
@@ -292,8 +331,25 @@ export const StrategicMapRoom: React.FC<StrategicMapRoomProps> = ({
                 {`// UN DEMARCATION CEASEFIRE LINE [SECTOR 4] //`}
               </text>
 
+              {/* Fortified Demarcation Bunkers & Watchtowers */}
+              {[
+                { x: 380, y: 360, label: 'BUNKER ALPHA-1' },
+                { x: 540, y: 410, label: 'WATCHPOST BRAVO' },
+                { x: 780, y: 410, label: 'PILLBOX CHARLIE' },
+                { x: 920, y: 365, label: 'OUTPOST DELTA' }
+              ].map((b, idx) => (
+                <g key={idx} opacity="0.8">
+                  <rect x={b.x - 6} y={b.y - 6} width="12" height="12" fill="#3b2b1a" stroke="#f59e0b" strokeWidth="1.5" />
+                  <line x1={b.x - 4} y1={b.y} x2={b.x + 4} y2={b.y} stroke="#f59e0b" strokeWidth="1.5" />
+                  <line x1={b.x} y1={b.y - 4} x2={b.x} y2={b.y + 4} stroke="#f59e0b" strokeWidth="1.5" />
+                  <text x={b.x} y={b.y + 14} textAnchor="middle" fill="#fbbf24" fontSize="7" fontFamily="'Courier Prime', monospace">
+                    {b.label}
+                  </text>
+                </g>
+              ))}
+
               {/* Grease-Pencil Annotations (Dr. Strangelove Glass Hand-drawn Markings) */}
-              <g opacity="0.85">
+              <g opacity="0.9">
                 {/* Grease Mark 1: Delta Bridge */}
                 <path d="M 600 450 Q 640 480 690 460" fill="none" stroke="#fde047" strokeWidth="2.5" strokeLinecap="round" />
                 <text x="590" y="500" fill="#fef08a" fontSize="11" fontFamily="'Special Elite', monospace" fontWeight="bold" transform="rotate(-4, 590, 500)">
@@ -312,6 +368,25 @@ export const StrategicMapRoom: React.FC<StrategicMapRoomProps> = ({
                   [BATTERY 152MM EMPLACEMENT]
                 </text>
               </g>
+
+              {/* Radar Coverage Rings (Early Warning Dome) */}
+              <g opacity="0.3">
+                <circle cx="380" cy="260" r="160" fill="none" stroke="#10b981" strokeWidth="1.5" strokeDasharray="4 6" />
+                <circle cx="380" cy="260" r="260" fill="none" stroke="#10b981" strokeWidth="1" strokeDasharray="6 8" />
+                <text x="380" y="105" textAnchor="middle" fill="#34d399" fontSize="8" fontFamily="'Courier Prime', monospace">
+                  SANTA MARIA RADAR UMBRELLA [250KM]
+                </text>
+              </g>
+
+              {/* Perimeter MGRS Coordinate Ticks */}
+              {['ALPHA-01', 'BRAVO-02', 'CHARLIE-03', 'DELTA-04', 'ECHO-05', 'FOXTROT-06', 'GOLF-07', 'HOTEL-08'].map((lbl, idx) => (
+                <g key={idx} opacity="0.5">
+                  <text x={40 + idx * 150} y="20" fill="#94a3b8" fontSize="9" fontFamily="'Courier Prime', monospace" fontWeight="bold">{lbl}</text>
+                  <line x1={40 + idx * 150} y1="0" x2={40 + idx * 150} y2="10" stroke="#94a3b8" strokeWidth="1.5" />
+                  <text x="15" y={60 + idx * 95} fill="#94a3b8" fontSize="8" fontFamily="'Courier Prime', monospace" fontWeight="bold">SEC-{idx + 1}</text>
+                  <line x1="0" y1={60 + idx * 95} x2="10" y2={60 + idx * 95} stroke="#94a3b8" strokeWidth="1.5" />
+                </g>
+              ))}
 
               {/* Monsoon Storm Front Shadow */}
               <circle
@@ -382,6 +457,161 @@ export const StrategicMapRoom: React.FC<StrategicMapRoomProps> = ({
                   </text>
                 </g>
               ))}
+
+              {/* NATO DIVISION SCALE (XX / XXX) CHITS ON THE BIG BOARD */}
+              {(warRoom.strategicDivisions || []).map(div => {
+                const isLoyal = div.factionId === 'loyalists';
+                const isRebel = div.factionId === 'rebels';
+                const isCoal = div.factionId === 'coalition';
+                const isVolsk = div.factionId === 'volskan';
+
+                const borderColor = isLoyal ? '#10b981' : isRebel ? '#ef4444' : isCoal ? '#38bdf8' : '#f97316';
+                const fillColor = isLoyal ? '#092517' : isRebel ? '#260d0d' : isCoal ? '#0b2031' : '#2d1409';
+                const textColor = isLoyal ? '#a7f3d0' : isRebel ? '#fca5a5' : isCoal ? '#bae6fd' : '#fed7aa';
+
+                return (
+                  <g
+                    key={div.id}
+                    className="cursor-pointer hover:opacity-95 transition-all"
+                    onClick={() => {
+                      onTuneInToTactical?.({
+                        id: div.id,
+                        sectorName: div.currentSector,
+                        x: div.x,
+                        y: div.y,
+                        attackerFactionId: div.factionId,
+                        defenderFactionId: isLoyal || isCoal ? 'rebels' : 'loyalists',
+                        attackerUnits: [],
+                        defenderUnits: [],
+                        attackerStrength: Math.round(div.troopCount / 160),
+                        defenderStrength: 75,
+                        expectedDurationHours: 4,
+                        elapsedHours: 1,
+                        status: 'ACTIVE_CLASH',
+                        casualtiesAttacker: 110,
+                        casualtiesDefender: 140,
+                        armorLostAttacker: 3,
+                        armorLostDefender: 2,
+                        aircraftLost: 1,
+                        reportedInPress: false
+                      });
+                    }}
+                  >
+                    {/* Order Directive Vector Arrow */}
+                    {div.targetX && div.targetY && (
+                      <g opacity="0.75">
+                        <line
+                          x1={div.x}
+                          y1={div.y}
+                          x2={div.targetX}
+                          y2={div.targetY}
+                          stroke={borderColor}
+                          strokeWidth="2.5"
+                          strokeDasharray="6 4"
+                        />
+                        <circle cx={div.targetX} cy={div.targetY} r="4" fill={borderColor} />
+                      </g>
+                    )}
+
+                    {/* NATO Standard Rectangular Division Chit Container */}
+                    <g transform={`translate(${div.x - 55}, ${div.y - 28})`}>
+                      <rect
+                        x="0"
+                        y="0"
+                        width="110"
+                        height="56"
+                        fill={fillColor}
+                        stroke={borderColor}
+                        strokeWidth="2.5"
+                        rx="2"
+                        className="shadow-lg"
+                      />
+
+                      {/* Division Scale Indicator Header (XX / XXX) */}
+                      <rect x="0" y="0" width="110" height="14" fill={borderColor} opacity="0.3" />
+                      <text
+                        x="55"
+                        y="10"
+                        textAnchor="middle"
+                        fill="#ffffff"
+                        fontSize="10"
+                        fontFamily="'Orbitron', sans-serif"
+                        fontWeight="black"
+                        letterSpacing="2"
+                      >
+                        {`${div.scale} • ${div.battlegroupRole}`}
+                      </text>
+
+                      {/* NATO Symbol Glyph */}
+                      {div.symbolType === 'ARMOR' && (
+                        <ellipse cx="24" cy="30" rx="14" ry="7" fill="none" stroke={borderColor} strokeWidth="1.8" />
+                      )}
+                      {div.symbolType === 'INFANTRY' && (
+                        <g stroke={borderColor} strokeWidth="1.6">
+                          <line x1="12" y1="23" x2="36" y2="37" />
+                          <line x1="12" y1="37" x2="36" y2="23" />
+                        </g>
+                      )}
+                      {div.symbolType === 'MECHANIZED' && (
+                        <g stroke={borderColor} strokeWidth="1.5">
+                          <ellipse cx="24" cy="30" rx="13" ry="6.5" fill="none" />
+                          <line x1="12" y1="24" x2="36" y2="36" />
+                        </g>
+                      )}
+                      {div.symbolType === 'ARTILLERY' && (
+                        <circle cx="24" cy="30" r="4.5" fill={borderColor} />
+                      )}
+                      {div.symbolType === 'MARINE' && (
+                        <g stroke={borderColor} strokeWidth="1.5">
+                          <circle cx="24" cy="26" r="3" fill="none" />
+                          <line x1="24" y1="29" x2="24" y2="38" />
+                          <path d="M 17 34 Q 24 39 31 34" fill="none" />
+                        </g>
+                      )}
+
+                      {/* Troop Headcount & Label */}
+                      <text
+                        x="42"
+                        y="27"
+                        fill={textColor}
+                        fontSize="8.5"
+                        fontFamily="'Orbitron', sans-serif"
+                        fontWeight="bold"
+                        letterSpacing="0.5"
+                      >
+                        {div.troopCount.toLocaleString()} MEN
+                      </text>
+                      <text
+                        x="42"
+                        y="38"
+                        fill="#f8fafc"
+                        fontSize="7.5"
+                        fontFamily="'Courier Prime', monospace"
+                        fontWeight="bold"
+                      >
+                        {div.readiness}% READINESS
+                      </text>
+
+                      {/* Readiness Mini Gauge Bar */}
+                      <rect x="6" y="47" width="98" height="4" fill="#0f172a" rx="1" />
+                      <rect x="6" y="47" width={(98 * div.readiness) / 100} height="4" fill={borderColor} rx="1" />
+                    </g>
+
+                    {/* Designation Title Subscript */}
+                    <text
+                      x={div.x}
+                      y={div.y + 39}
+                      textAnchor="middle"
+                      fill={textColor}
+                      fontSize="9"
+                      fontFamily="'Special Elite', monospace"
+                      fontWeight="bold"
+                    >
+                      {div.designation}
+                    </text>
+                  </g>
+                );
+              })}
 
               {/* Active Flashpoint Pulsing Radar Beacon */}
               {activeFlashpoint && (

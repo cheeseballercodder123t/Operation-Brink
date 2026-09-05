@@ -72,6 +72,17 @@ Respond strictly in valid JSON without markdown wrapping or code blocks with the
   "provider": "PROVIDER_NAME",
   "doctrineTitle": "OPERATION NAME (e.g. OPERATION STEEL THUNDER)",
   "geopoliticalAssessment": "Brief 1-2 sentence 1960s situation appraisal",
+  "corpsDirectives": [
+    {
+      "corpsName": "NORTHERN CORPS" | "SIERRA 1ST ARMY" | "7TH EXPEDITIONARY TF" | "8TH GUARDS SHOCK ARMY",
+      "factionId": "loyalists" | "rebels" | "coalition" | "volskan",
+      "unitsCount": 3,
+      "directive": "3 Armored Divisions execute sweeping pincer along River Bank",
+      "objective": "DELTA_BRIDGE" | "OIL_REFINERIES" | "SANTA_MARIA" | "MONTE_ORO" | "PORT_BELLA",
+      "targetX": 580,
+      "targetY": 490
+    }
+  ],
   "unitOrders": [
     {
       "unitId": "exact unit ID from battlefield or faction-role like loy-arm-1",
@@ -255,6 +266,44 @@ function generateAlgorithmicDirectives(battlefield?: BattlefieldSummary) {
     geopoliticalAssessment: isUnified
       ? "San Pietro has declared national sovereignty. Foreign proxy networks are collapsing under combined local counter-offensive."
       : "Frontline stabilizes along the central river line. Volskan heavy artillery is zeroing in as Atlantic air wings maintain naval corridor.",
+    corpsDirectives: [
+      {
+        corpsName: "NORTHERN CORPS",
+        factionId: "loyalists",
+        unitsCount: 3,
+        directive: "3 Armored Divisions execute sweeping pincer along River Bank",
+        objective: "DELTA_BRIDGE",
+        targetX: 580,
+        targetY: 490
+      },
+      {
+        corpsName: "SIERRA 1ST ARMY",
+        factionId: "rebels",
+        unitsCount: 3,
+        directive: "2 Highland Battlegroups stage concealed ambush along Monte Oro Ridge",
+        objective: "MONTE_ORO",
+        targetX: 380,
+        targetY: 240
+      },
+      {
+        corpsName: "7TH EXPEDITIONARY TF",
+        factionId: "coalition",
+        unitsCount: 3,
+        directive: "Establish amphibious perimeter and advance heavy armor toward refinery axis",
+        objective: "OIL_REFINERIES",
+        targetX: 640,
+        targetY: 340
+      },
+      {
+        corpsName: "8TH GUARDS SHOCK ARMY",
+        factionId: "volskan",
+        unitsCount: 4,
+        directive: "Concentrate 152mm artillery preparation and mass armored assault west through causeway gap",
+        objective: "DELTA_BRIDGE",
+        targetX: 560,
+        targetY: 470
+      }
+    ],
     transmissions: [
       {
         factionId: "loyalists",

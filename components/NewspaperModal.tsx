@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { X, Newspaper, RefreshCw, Globe, Radio, ShieldAlert, Sparkles, AlertCircle, Stamp } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Newspaper, Globe, Radio, ShieldAlert, Sparkles, AlertCircle, Stamp } from 'lucide-react';
 import { FlashpointBattle } from '@/lib/warRoom';
-import { AnnunciatorButton } from './AnnunciatorButton';
+import { BattleLithographSketch } from './BattleLithographSketch';
 
 export type MastheadType = 'CHRONICLE' | 'VOICE_SIERRA' | 'REUTERS';
 
@@ -30,6 +30,102 @@ interface NewspaperModalProps {
   simTimeStr: string;
 }
 
+function generateInstantArticle(
+  battle: FlashpointBattle | null,
+  masthead: MastheadType,
+  simTime: string
+): NewspaperArticle {
+  const sector = battle?.sectorName || 'Delta Causeway Bridge';
+  const victor = battle?.victorFactionId || (battle?.attackerStrength && battle.attackerStrength > (battle.defenderStrength || 50) ? battle.attackerFactionId : 'loyalists');
+  const victorLosses = battle?.casualtiesDefender ? Math.round(battle.casualtiesDefender * 0.45) : 160;
+  const defeatedLosses = battle?.casualtiesAttacker ? Math.round(battle.casualtiesAttacker * 1.15) : 440;
+  const armorLost = (battle?.armorLostAttacker || 2) + (battle?.armorLostDefender || 2);
+  const airLost = battle?.aircraftLost || 1;
+
+  if (masthead === 'CHRONICLE') {
+    return {
+      mastheadName: 'THE SAN PIETRO CHRONICLE',
+      mastheadMotto: 'The Voice of National Order & Sovereign Integrity — Daily Circulation 45,000',
+      headline: victor === 'loyalists'
+        ? `PRESIDENTIAL FORCES CRUSH GUERRILLA THRUST AT ${sector.toUpperCase()}`
+        : `HEROIC STAND AT ${sector.toUpperCase()}: STRATEGIC CONSOLIDATION ORDERED`,
+      subheadline: `General Staff reports heavy enemy destruction as 1st Armored Division holds critical lines against foreign-backed cadres.`,
+      byline: 'By Captain Alberto Morales, War Correspondent with General Staff',
+      dateline: `OCTOBER 14, 1963 — SANTA MARIA (STATE CABLE)`,
+      paragraphs: [
+        `Under direct orders from the Military Council, loyal government formations met the hostile assault along the ${sector} in force early this morning. Waves of motorized armor and entrenched infantry repelled enemy vanguard detachments with overwhelming 152mm artillery counter-battery fire.`,
+        `Battlefield reconnaissance confirms the enemy sustained catastrophic attrition, with over ${defeatedLosses} hostile combatants neutralized and ${armorLost} armored fighting vehicles destroyed. Friendly units carried out tactical echelon maneuvers to secure the causeway flanks and maintain unbroken petroleum pipelines.`,
+        `The Ministry of Information assures the public that all vital infrastructure remains under firm sovereign control. Foreign diplomatic protests have been dismissed by the Premier as baseless provocations.`
+      ],
+      keyBulletins: [
+        `Hostile combatants neutralized: ~${defeatedLosses} cadres`,
+        `Armor destroyed in engagement: ${armorLost} mechanized units`,
+        `Air defense batteries active: ${airLost} hostile sorties repelled`,
+        `Petroleum transport corridors secured under military guard`
+      ],
+      propagandaAngle: 'Strict Loyalist Junta censorship. Setbacks framed as heroic retrograde consolidation; regime armor glorified.',
+      editorialSketchDesc: 'Client-side vector lithograph displaying grease-pencil assault vectors and pulverized enemy NATO counters.',
+      oilPriceShift: '+$1.40 / bbl (State rationing quotas steady)',
+      unSecurityCouncilReaction: 'Loyalist delegation rejects Geneva observation mission as unlawful foreign interference.',
+      model: 'TELEMETRY VINTAGE LITHOGRAPH'
+    };
+  }
+
+  if (masthead === 'VOICE_SIERRA') {
+    return {
+      mastheadName: 'VOICE OF THE SIERRA — COMMUNIQUE',
+      mastheadMotto: 'Clandestine Revolutionary Leaflet — Printed in Secret by Sierra Maestra Press Cadre',
+      headline: victor === 'rebels'
+        ? `LIBERATION CADRES SMASH JUNTA FLANK AT ${sector.toUpperCase()}`
+        : `GUERRILLA BRIGADES STRIKE CORRUPT REGIME AT ${sector.toUpperCase()}`,
+      subheadline: `Peasant vanguard ambushes imperialist tank column; heavy howitzers captured as revolutionary lines advance.`,
+      byline: 'From Comandancia General, Liberated Mountain Sector',
+      dateline: `OCTOBER 14, 1963 — SIERRA MADRE FREE ZONE`,
+      paragraphs: [
+        `In the dense mist of dawn, the 3rd Revolutionary Vanguard Brigade sprung a devastating flanking pincer against regime forces advancing through ${sector}. Armed with mountain anti-tank rifles and captured rocket munitions, our fighters severed the enemy's rear logistics line.`,
+        `Panicked regime conscripts fled their positions as 152mm howitzer salvos hammered the fortified causeway. More than ${defeatedLosses} soldiers of the dictator's guard were routed or captured, alongside ${armorLost} smoldering M48 tanks left burning on the riverbank.`,
+        `The Comandancia declares the entire river corridor liberated. We call upon workers, refinery technicians, and students to join the general strike and complete the expulsion of foreign imperialist puppets.`
+      ],
+      keyBulletins: [
+        `Junta forces routed / captured: ~${defeatedLosses} troops`,
+        `Imperialist tanks destroyed: ${armorLost} armored hulls`,
+        `Downed reconnaissance flights: ${airLost} aircraft`,
+        `Peasant self-defense militias expanding defensive perimeter`
+      ],
+      propagandaAngle: 'Clandestine revolutionary prose. Celebrates guerrilla victory, anti-imperialist solidarity, and captured arms.',
+      editorialSketchDesc: 'Underground tele-facsimile sketch tracing guerrilla envelopment arcs and destroyed enemy armor.',
+      oilPriceShift: '+$2.75 / bbl (Black Gold refinery pipelines halted by workers)',
+      unSecurityCouncilReaction: 'Revolutionary Comandancia warns foreign superpowers against landing expeditionary troops.',
+      model: 'TELEMETRY VINTAGE LITHOGRAPH'
+    };
+  }
+
+  return {
+    mastheadName: 'INTERNATIONAL HERALD & REUTERS WIRE',
+    mastheadMotto: 'Geneva & London Wire Service — Unbiased Global Geopolitical Intelligence',
+    headline: `BLOODY ENGAGEMENT AT ${sector.toUpperCase()}: HUNDREDS CASUALTIES AS ARMOR CLASHES`,
+    subheadline: `Superpower alert levels raised after heavy battle erupts in strategic San Pietro corridor; crude futures surge.`,
+    byline: 'By Arthur H. Sterling, Chief Geopolitical Correspondent',
+    dateline: `OCTOBER 14, 1963 — GENEVA WIRE DESK (SPECIAL DISPATCH)`,
+    paragraphs: [
+      `Fierce fighting involving heavy armored regiments and tactical air sorties erupted across the ${sector} early Tuesday, according to confirmed military telegrams and satellite intercept cables. Both sides committed multiple division-scale formations in a bid to control key bridges and fuel depots.`,
+      `Verified casualty tallies indicate approximately ${victorLosses} victor troops and ${defeatedLosses} opposing combatants killed or wounded during the four-hour artillery duel. At least ${armorLost} armored fighting vehicles were reduced to wreckage amid concentrated 152mm howitzer fire.`,
+      `In Washington and Moscow, defense ministries placed regional naval task forces on high alert. The United Nations Security Council has scheduled an emergency midnight session, as international commodity markets registered immediate shocks to global crude supplies.`
+    ],
+    keyBulletins: [
+      `Total battle casualties: ~${victorLosses + defeatedLosses} military personnel`,
+      `Armored combat vehicles confirmed destroyed: ${armorLost}`,
+      `Combat aircraft downed by surface-to-air missiles: ${airLost}`,
+      `DEFCON strategic readiness index elevated across European commands`
+    ],
+    propagandaAngle: 'Objective Associated Press / Reuters cable. Focuses on exact troop loss numbers, crude oil pricing, and UN escalation risks.',
+    editorialSketchDesc: 'Official Department of Defense tele-facsimile wirephoto sketch showing tactical vectors, crater clusters, and struck-out NATO counters.',
+    oilPriceShift: '+$1.85 / barrel (Gulf Brent index spiked +4.2%)',
+    unSecurityCouncilReaction: 'Emergency UNSC resolution proposed calling for immediate 48-hour ceasefire and observer deployment.',
+    model: 'TELEMETRY VINTAGE LITHOGRAPH'
+  };
+}
+
 export const NewspaperModal: React.FC<NewspaperModalProps> = ({
   isOpen,
   onClose,
@@ -37,74 +133,66 @@ export const NewspaperModal: React.FC<NewspaperModalProps> = ({
   simTimeStr
 }) => {
   const [activeMasthead, setActiveMasthead] = useState<MastheadType>('REUTERS');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [article, setArticle] = useState<NewspaperArticle | null>(null);
+  const [enrichedArticle, setEnrichedArticle] = useState<NewspaperArticle | null>(null);
 
-  const battleId = battle?.id;
-  const sectorName = battle?.sectorName;
-  const victorFactionId = battle?.victorFactionId;
-  const casualtiesDefender = battle?.casualtiesDefender;
-  const casualtiesAttacker = battle?.casualtiesAttacker;
-  const aircraftLost = battle?.aircraftLost;
-  const armorLostAttacker = battle?.armorLostAttacker;
-  const armorLostDefender = battle?.armorLostDefender;
+  const sectorName = battle?.sectorName || 'Delta Causeway Bridge';
+  const victorFactionId = battle?.victorFactionId || (battle?.attackerStrength && battle.attackerStrength > (battle.defenderStrength || 50) ? battle.attackerFactionId : 'loyalists');
+  const defeatedFactionId = victorFactionId === 'loyalists' ? 'rebels' : 'loyalists';
+  const casualtiesDefender = battle?.casualtiesDefender || 180;
+  const casualtiesAttacker = battle?.casualtiesAttacker || 460;
+  const aircraftLost = battle?.aircraftLost || 1;
+  const armorLostAttacker = battle?.armorLostAttacker || 3;
+  const armorLostDefender = battle?.armorLostDefender || 2;
+  const totalArmorLost = armorLostAttacker + armorLostDefender;
 
+  const instantArticle = useMemo(
+    () => generateInstantArticle(battle, activeMasthead, simTimeStr),
+    [battle, activeMasthead, simTimeStr]
+  );
+
+  // Optional background fetch to enrich with Gemini if available, without blocking UI
   useEffect(() => {
-    let isCancelled = false;
     if (!isOpen) return;
+    let isMounted = true;
 
-    const runFetch = async () => {
-      setLoading(true);
+    const fetchEnriched = async () => {
       try {
         const res = await fetch('/api/newspaper', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            battleSector: sectorName || 'Delta Causeway Bridge',
-            victorFactionId: victorFactionId || 'loyalists',
-            defeatedFactionId: victorFactionId === 'loyalists' ? 'rebels' : 'loyalists',
+            battleSector: sectorName,
+            victorFactionId,
+            defeatedFactionId,
             victorName: victorFactionId === 'rebels' ? 'San Pietro Liberation Front' : 'San Pietro Armed Forces',
             defeatedName: victorFactionId === 'rebels' ? 'Presidential Guard Junta' : 'Guerilla Insurgent Cadres',
-            victorLosses: casualtiesDefender ? Math.round(casualtiesDefender * 0.4) : 180,
-            defeatedLosses: casualtiesAttacker ? Math.round(casualtiesAttacker * 1.1) : 420,
-            airLosses: aircraftLost || 1,
-            armorLost: (armorLostAttacker || 2) + (armorLostDefender || 2),
+            victorLosses: casualtiesDefender,
+            defeatedLosses: casualtiesAttacker,
+            airLosses: aircraftLost,
+            armorLost: totalArmorLost,
             commanderName: victorFactionId === 'rebels' ? 'Comandante Lucía Reyes' : 'General Hector Cruz',
             masthead: activeMasthead,
             simTime: simTimeStr
           })
         });
-        if (res.ok && !isCancelled) {
-          const data = await res.json();
-          setArticle(data);
+        if (res.ok && isMounted) {
+          const remoteData = await res.json();
+          if (remoteData && remoteData.headline) {
+            setEnrichedArticle(remoteData);
+          }
         }
-      } catch (e) {
-        console.warn('Failed to load dynamic newspaper dispatch:', e);
-      } finally {
-        if (!isCancelled) {
-          setLoading(false);
-        }
+      } catch {
+        // Fallback already displayed
       }
     };
 
-    runFetch();
-
+    fetchEnriched();
     return () => {
-      isCancelled = true;
+      isMounted = false;
     };
-  }, [
-    isOpen,
-    activeMasthead,
-    battleId,
-    sectorName,
-    victorFactionId,
-    casualtiesDefender,
-    casualtiesAttacker,
-    aircraftLost,
-    armorLostAttacker,
-    armorLostDefender,
-    simTimeStr
-  ]);
+  }, [isOpen, activeMasthead, battle?.id, sectorName, victorFactionId, defeatedFactionId, casualtiesDefender, casualtiesAttacker, aircraftLost, totalArmorLost, simTimeStr]);
+
+  const article = enrichedArticle || instantArticle;
 
   if (!isOpen) return null;
 
@@ -119,15 +207,13 @@ export const NewspaperModal: React.FC<NewspaperModalProps> = ({
             <div>
               <div className="text-xs font-space font-bold tracking-wider uppercase text-[#d1fae5] flex items-center gap-2">
                 <span>PROJECT BRINK // 1960s PRESS TELE-PRINTER DESK</span>
-                {article?.model && (
-                  <span className="bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded text-[9px] border border-amber-400/30 flex items-center gap-1 font-mono">
-                    <Sparkles className="w-2.5 h-2.5" />
-                    {article.model}
-                  </span>
-                )}
+                <span className="bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded text-[9px] border border-amber-400/30 flex items-center gap-1 font-mono">
+                  <Sparkles className="w-2.5 h-2.5" />
+                  CLIENT LITHOGRAPH • 0-TOKEN INSTANT TELEMETRY
+                </span>
               </div>
               <div className="text-[9px] font-industrial text-[#a7f3d0]/70">
-                Wire Transmissions, Clandestine Radio Leaflets & Embargo Bulletins
+                Wire Transmissions, Halftone Facsimiles & Embargo Bulletins
               </div>
             </div>
           </div>
@@ -193,181 +279,135 @@ export const NewspaperModal: React.FC<NewspaperModalProps> = ({
           {/* Subtle Horizontal Paper Fold Crease Line */}
           <div className="absolute top-1/2 left-0 right-0 h-1 bg-gradient-to-b from-black/5 via-black/10 to-transparent pointer-events-none" />
 
-          {loading ? (
-            <div className="py-28 flex flex-col items-center justify-center gap-3 text-neutral-600">
-              <RefreshCw className="w-9 h-9 animate-spin text-amber-900" />
-              <div className="font-teletype text-xs uppercase tracking-widest text-[#4a3b2c]">
-                INTERCEPTING WIRE CABLE // INK CYLINDERS ROLLING...
+          <div className="relative">
+            {/* Red Ink Declassified Rubber Stamp */}
+            <div className="absolute top-0 right-4 z-20 pointer-events-none">
+              <div className="rubber-stamp">
+                DECLASSIFIED BY DEPT OF STATE • 14 OCT 1963
               </div>
             </div>
-          ) : article ? (
-            <div className="relative">
-              {/* Red Ink Declassified Rubber Stamp */}
-              <div className="absolute top-0 right-4 z-20 pointer-events-none">
-                <div className="rubber-stamp">
-                  DECLASSIFIED BY DEPT OF STATE • 14 OCT 1963
+
+            {/* Masthead Banner */}
+            <div className="text-center border-b-4 border-double border-[#1c1815] pb-3 pt-1">
+              <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-[#1c1815] font-broadsheet leading-none">
+                {article.mastheadName}
+              </h1>
+              <p className="text-xs font-broadsheet tracking-wider text-neutral-700 mt-1.5 italic">
+                &ldquo;{article.mastheadMotto}&rdquo;
+              </p>
+              <div className="flex justify-between items-center text-[10px] font-teletype border-t-2 border-b border-[#3c342a] mt-2.5 py-1 px-4 uppercase text-neutral-700">
+                <span>VOL. LXVII NO. 14,892</span>
+                <span>SAN PIETRO CRISIS THEATRE • {article.dateline}</span>
+                <span>PRICE: 10 CENTAVOS // 5 CENTS US</span>
+              </div>
+            </div>
+
+            {/* Propaganda Bias Callout */}
+            <div className="my-3 p-2.5 bg-[#ede4d0] border-l-4 border-amber-900 text-xs text-neutral-800 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-900 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-space font-bold uppercase tracking-wider text-[10px] text-amber-950">
+                  CENSORSHIP & EDITORIAL BIAS:
+                </span>{' '}
+                <span className="italic">{article.propagandaAngle}</span>
+              </div>
+            </div>
+
+            {/* Main Headline */}
+            <div className="text-center my-4">
+              <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight leading-tight text-[#1c1815] font-broadsheet">
+                {article.headline}
+              </h2>
+              <h3 className="text-base md:text-lg font-broadsheet font-semibold text-neutral-700 mt-2 italic max-w-2xl mx-auto">
+                {article.subheadline}
+              </h3>
+              <div className="text-xs font-teletype font-bold text-neutral-800 mt-2">
+                {article.byline}
+              </div>
+            </div>
+
+            {/* Multi-Column Article Layout with Classic Vertical Hairline Rules */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-3 border-t-2 border-[#1c1815]">
+              {/* Columns 1 & 2: Story Text + Instant Client-Side Vector Lithograph */}
+              <div className="md:col-span-2 space-y-4 text-[14px] leading-relaxed text-justify text-[#221e1a] border-r-0 md:border-r border-[#c2b49e] md:pr-6 font-broadsheet">
+                {article.paragraphs.slice(0, 1).map((p, idx) => (
+                  <p
+                    key={idx}
+                    className="first-letter:text-5xl first-letter:font-black first-letter:float-left first-letter:mr-2.5 first-letter:leading-none first-letter:text-[#1c1815]"
+                  >
+                    {p}
+                  </p>
+                ))}
+
+                {/* THE CLIENT-SIDE VINTAGE MILITARY VECTOR LITHOGRAPH */}
+                <div className="my-4">
+                  <BattleLithographSketch
+                    battle={battle}
+                    victorFactionId={victorFactionId}
+                    defeatedFactionId={defeatedFactionId}
+                    sectorName={sectorName}
+                    victorLosses={casualtiesDefender}
+                    defeatedLosses={casualtiesAttacker}
+                    armorLost={totalArmorLost}
+                    airLosses={aircraftLost}
+                    simTimeStr={simTimeStr}
+                  />
                 </div>
+
+                {article.paragraphs.slice(1).map((p, idx) => (
+                  <p key={idx}>{p}</p>
+                ))}
               </div>
 
-              {/* Masthead Banner */}
-              <div className="text-center border-b-4 border-double border-[#1c1815] pb-3 pt-1">
-                <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-[#1c1815] font-broadsheet leading-none">
-                  {article.mastheadName}
-                </h1>
-                <p className="text-xs font-broadsheet tracking-wider text-neutral-700 mt-1.5 italic">
-                  &ldquo;{article.mastheadMotto}&rdquo;
-                </p>
-                <div className="flex justify-between items-center text-[10px] font-teletype border-t-2 border-b border-[#3c342a] mt-2.5 py-1 px-4 uppercase text-neutral-700">
-                  <span>VOL. LXVII NO. 14,892</span>
-                  <span>SAN PIETRO CRISIS THEATRE • {article.dateline}</span>
-                  <span>PRICE: 10 CENTAVOS // 5 CENTS US</span>
+              {/* Column 3: Sidebar Intelligence, Casualties, Commodities */}
+              <div className="space-y-4 font-broadsheet">
+                {/* Official Casualty Tally Box */}
+                <div className="bg-[#ede4d0] border-2 border-[#3c342a] p-3 text-xs shadow-sm">
+                  <h4 className="font-black font-broadsheet uppercase tracking-wider text-[#1c1815] border-b-2 border-[#3c342a] pb-1 mb-2 text-sm">
+                    Official Loss Tally
+                  </h4>
+                  <ul className="space-y-2 text-xs">
+                    {article.keyBulletins.map((b, idx) => (
+                      <li key={idx} className="flex items-start gap-1.5 leading-snug">
+                        <span className="text-amber-900 font-bold">•</span>
+                        <span>{b}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              </div>
 
-              {/* Propaganda Bias Callout */}
-              <div className="my-3 p-2.5 bg-[#ede4d0] border-l-4 border-amber-900 text-xs text-neutral-800 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-900 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-space font-bold uppercase tracking-wider text-[10px] text-amber-950">
-                    CENSORSHIP & EDITORIAL BIAS:
-                  </span>{' '}
-                  <span className="italic">{article.propagandaAngle}</span>
-                </div>
-              </div>
-
-              {/* Main Headline */}
-              <div className="text-center my-4">
-                <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tight leading-tight text-[#1c1815] font-broadsheet">
-                  {article.headline}
-                </h2>
-                <h3 className="text-base md:text-lg font-broadsheet font-semibold text-neutral-700 mt-2 italic max-w-2xl mx-auto">
-                  {article.subheadline}
-                </h3>
-                <div className="text-xs font-teletype font-bold text-neutral-800 mt-2">
-                  {article.byline}
-                </div>
-              </div>
-
-              {/* Multi-Column Article Layout with Classic Vertical Hairline Rules */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-3 border-t-2 border-[#1c1815]">
-                {/* Columns 1 & 2: Story Text */}
-                <div className="md:col-span-2 space-y-4 text-[14px] leading-relaxed text-justify text-[#221e1a] border-r-0 md:border-r border-[#c2b49e] md:pr-6 font-broadsheet">
-                  {article.paragraphs.map((p, idx) => (
-                    <p
-                      key={idx}
-                      className={
-                        idx === 0
-                          ? 'first-letter:text-5xl first-letter:font-black first-letter:float-left first-letter:mr-2.5 first-letter:leading-none first-letter:text-[#1c1815]'
-                          : ''
-                      }
-                    >
-                      {p}
-                    </p>
-                  ))}
-
-                  {/* Grainy Tactical Wirephoto Sketch Box */}
-                  <div className="border-2 border-[#2b241c] bg-[#e6ddc8] p-3 rounded-none my-4 shadow-sm">
-                    <div className="font-space text-[9px] font-bold uppercase text-neutral-800 mb-1.5 flex items-center justify-between border-b border-[#a89980] pb-1">
-                      <span>WIREPHOTO TELE-FACSIMILE RECORD</span>
-                      <span>THEATRE GRID: {battle?.sectorName || 'DELTA CAUSEWAY'}</span>
-                    </div>
-
-                    {/* Halftone High-Contrast Wirephoto Illustration */}
-                    <div className="w-full h-36 bg-[#1a1612] border-2 border-[#110e0c] relative overflow-hidden flex items-center justify-center halftone-photo">
-                      <svg className="w-full h-full" viewBox="0 0 400 130">
-                        {/* Halftone Grid Lines */}
-                        <line x1="0" y1="45" x2="400" y2="45" stroke="#4a3e30" strokeWidth="1" strokeDasharray="3 3" />
-                        <line x1="0" y1="90" x2="400" y2="90" stroke="#4a3e30" strokeWidth="1" strokeDasharray="3 3" />
-                        <line x1="130" y1="0" x2="130" y2="130" stroke="#4a3e30" strokeWidth="1" strokeDasharray="3 3" />
-                        <line x1="270" y1="0" x2="270" y2="130" stroke="#4a3e30" strokeWidth="1" strokeDasharray="3 3" />
-
-                        {/* Causeway River */}
-                        <path d="M 200 0 Q 170 65 210 130" stroke="#475569" strokeWidth="12" fill="none" opacity="0.7" />
-                        <text x="202" y="70" fill="#94a3b8" fontSize="8" fontFamily="monospace" transform="rotate(75, 202, 70)">
-                          RIO SANTO CORRIDOR
-                        </text>
-
-                        {/* Tactical Assault Arrows */}
-                        <path d="M 60 75 Q 130 65 185 65" stroke="#dc2626" strokeWidth="5" fill="none" />
-                        <polygon points="185,65 170,58 170,72" fill="#dc2626" />
-
-                        <path d="M 340 55 Q 270 60 215 63" stroke="#0284c7" strokeWidth="5" fill="none" />
-                        <polygon points="215,63 230,56 230,70" fill="#0284c7" />
-
-                        {/* Artillery Burst Radius */}
-                        <circle cx="200" cy="64" r="16" fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeDasharray="4 2" />
-                        <text x="200" y="68" textAnchor="middle" fill="#fef08a" fontSize="9" fontFamily="monospace" fontWeight="bold">
-                          GROUND ZERO
-                        </text>
-
-                        {/* Top Banner Tag */}
-                        <rect x="10" y="10" width="130" height="18" fill="#14110e" stroke="#6b5c49" />
-                        <text x="18" y="23" fill="#f8fafc" fontSize="9" fontFamily="monospace" fontWeight="bold">
-                          {battle?.sectorName || 'DELTA BRIDGE SECTOR'}
-                        </text>
-                      </svg>
-                    </div>
-
-                    <p className="text-[11px] font-broadsheet italic text-neutral-700 mt-2 leading-tight">
-                      Fig. 1.2 — {article.editorialSketchDesc}
-                    </p>
+                {/* Crude Oil Commodities Market Index */}
+                <div className="border-2 border-[#3c342a] p-3 bg-[#f5ede0] shadow-sm">
+                  <h4 className="font-black font-broadsheet uppercase tracking-wider text-[#1c1815] border-b border-[#3c342a] pb-1 mb-1.5 text-xs">
+                    Commodity Markets
+                  </h4>
+                  <div className="text-xs text-neutral-900">
+                    <span className="font-semibold">Black Gold Crude Index: </span>
+                    <span className="font-teletype font-bold text-amber-900 bg-amber-200/60 px-1 py-0.5 rounded">
+                      {article.oilPriceShift}
+                    </span>
                   </div>
                 </div>
 
-                {/* Column 3: Sidebar Intelligence, Casualties, Commodities */}
-                <div className="space-y-4 font-broadsheet">
-                  {/* Official Casualty Tally Box */}
-                  <div className="bg-[#ede4d0] border-2 border-[#3c342a] p-3 text-xs shadow-sm">
-                    <h4 className="font-black font-broadsheet uppercase tracking-wider text-[#1c1815] border-b-2 border-[#3c342a] pb-1 mb-2 text-sm">
-                      Official Loss Tally
-                    </h4>
-                    <ul className="space-y-2 text-xs">
-                      {article.keyBulletins.map((b, idx) => (
-                        <li key={idx} className="flex items-start gap-1.5 leading-snug">
-                          <span className="text-amber-900 font-bold">•</span>
-                          <span>{b}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                {/* UN Security Council Wire */}
+                <div className="border-2 border-[#3c342a] p-3 bg-[#f5ede0] shadow-sm">
+                  <h4 className="font-black font-broadsheet uppercase tracking-wider text-[#1c1815] border-b border-[#3c342a] pb-1 mb-1.5 text-xs">
+                    United Nations Wire
+                  </h4>
+                  <p className="text-xs text-neutral-800 leading-relaxed italic">
+                    &ldquo;{article.unSecurityCouncilReaction}&rdquo;
+                  </p>
+                </div>
 
-                  {/* Crude Oil Commodities Market Index */}
-                  <div className="border-2 border-[#3c342a] p-3 bg-[#f5ede0] shadow-sm">
-                    <h4 className="font-black font-broadsheet uppercase tracking-wider text-[#1c1815] border-b border-[#3c342a] pb-1 mb-1.5 text-xs">
-                      Commodity Markets
-                    </h4>
-                    <div className="text-xs text-neutral-900">
-                      <span className="font-semibold">Black Gold Crude Index: </span>
-                      <span className="font-teletype font-bold text-amber-900 bg-amber-200/60 px-1 py-0.5 rounded">
-                        {article.oilPriceShift}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* UN Security Council Wire */}
-                  <div className="border-2 border-[#3c342a] p-3 bg-[#f5ede0] shadow-sm">
-                    <h4 className="font-black font-broadsheet uppercase tracking-wider text-[#1c1815] border-b border-[#3c342a] pb-1 mb-1.5 text-xs">
-                      United Nations Wire
-                    </h4>
-                    <p className="text-xs text-neutral-800 leading-relaxed italic">
-                      &ldquo;{article.unSecurityCouncilReaction}&rdquo;
-                    </p>
-                  </div>
-
-                  {/* Red Rubber Stamp 2 */}
-                  <div className="pt-2 text-center">
-                    <div className="rubber-stamp scale-90">
-                      TOP SECRET // EYES ONLY
-                    </div>
+                {/* Red Rubber Stamp 2 */}
+                <div className="pt-2 text-center">
+                  <div className="rubber-stamp scale-90">
+                    TOP SECRET // EYES ONLY
                   </div>
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="py-24 text-center text-neutral-600 font-teletype text-sm">
-              NO BATTLE DISPATCHES CURRENTLY ON FILE. ENGAGE FORCES TO GENERATE FIELD INTELLIGENCE.
-            </div>
-          )}
+          </div>
         </div>
 
         {/* Console Bottom Action Bar */}
@@ -377,9 +417,9 @@ export const NewspaperModal: React.FC<NewspaperModalProps> = ({
           </span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-amber-700 hover:bg-amber-600 text-white font-space font-bold text-xs uppercase tracking-wider transition-colors shadow-md rounded-sm border border-amber-500"
+            className="px-4 py-1.5 bg-amber-700 hover:bg-amber-600 text-white font-space font-bold text-xs uppercase tracking-wider transition-colors shadow-md rounded-sm border border-amber-500 cursor-pointer"
           >
-            FILE IN WAR ROOM DOSSIER
+            RETURN TO CONSOLE DESK
           </button>
         </div>
       </div>
